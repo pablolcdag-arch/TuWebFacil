@@ -1,0 +1,22 @@
+=========================================
+🚀 HOJA DE RUTA: TU WEBFACIL
+=========================================
+
+ESTADO ACTUAL:
+- Servidor: app.py configurado en puerto 5001.
+- IA: Conectada vía API manual (versión v1 estable).
+- DB: Supabase conectada y registrando clientes.
+- Meta: Webhook validado, falta verificar el número "To".
+
+PASOS PARA RETOMAR MAÑANA:
+1. Abrir Terminal en la carpeta: cd TuWebFacil
+2. Activar Entorno Virtual: source venv/bin/activate
+3. Iniciar Túnel Ngrok: ngrok http 5001
+4. Actualizar Meta: 
+   - Copiar la nueva URL de Ngrok.
+   - Pegarla en Meta Developers (WhatsApp > Configuration).
+   - IMPORTANTE: Agregar /webhook al final de la URL.
+5. Encender Servidor: python app.py
+6. Verificar Meta: Ir a "API Setup" y reintentar el código de verificación del número.
+
+=========================================
