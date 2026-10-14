@@ -1,3 +1,24 @@
 .env
+.env.*
 .DS_Store
 __pycache__/
+*.pyc
+
+# Runtime y datos sensibles
+messages.db
+receipts/
+resumenes_banco/
+
+# Logs
+*.log
+
+# Backups y entornos virtuales
+deploy.tar.gz
+deploy.tar.gz.bak
+venv/
+
+# Assets locales de marketing
+Marketing_Reels/
+
+# Plantillas de referencia de otros proyectos
+AGENTS_plantilla_visible.md

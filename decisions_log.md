@@ -1,0 +1,61 @@
+# Bitácora de Decisiones (Decisions Log) — TuWebLista
+
+Este documento registra las decisiones estratégicas y arquitectónicas del proyecto. Todo agente debe leerlo (después de `.agents/AGENTS.md`) para entender el **"por qué"** detrás de las directivas vigentes y qué alternativas ya fueron descartadas.
+
+**Reglas de uso:**
+- Las entradas se agregan **al final** (orden cronológico). No se editan ni borran entradas pasadas: si una decisión cambia, se agrega una nueva entrada que la reemplaza y se indica cuál.
+- Solo el **Agente Coordinador** (o el usuario) registra decisiones.
+- Cada decisión que afecte reglas o arquitectura debe reflejarse también en `.agents/AGENTS.md`.
+
+### Formato de entrada
+```markdown
+## [DD/MM/AAAA] — Título corto de la decisión
+- **Decisión:** Qué se decidió.
+- **Razón:** Por qué (problema, evidencia, contexto).
+- **Alternativas descartadas:** Qué se evaluó y por qué no. (opcional)
+- **Impacto:** Archivos / módulos / procesos afectados. (opcional)
+- **Reemplaza a:** Fecha y título de la decisión anterior, si aplica. (opcional)
+```
+
+---
+
+## [05/09/2026] — Reestructuración de carpeta y nombre de dominio *(histórica)*
+- **Decisión:** Mover el proyecto de la carpeta principal del usuario hacia `Documentos/TuWebLista` y renombrar las menciones del proyecto de "TuWebFacil" a "TuWebLista".
+- **Razón:** El dominio final adquirido fue `tuweblista.com.ar` debido a la disponibilidad. Mantener el nombre viejo en la estructura del código y de archivos generaba confusión y pérdida de contexto.
+- **Dato adicional:** Los recursos de marketing visual para videos de la plataforma (Reels/TikTok) se unificaron dentro de la carpeta `Marketing_Reels/` del proyecto.
+- **Nota (06/10/2026):** El renombre quedó incompleto: el directorio del VPS (`/var/www/tuwebfacil`), los procesos de Supervisor (`tuwebfacil_*`), el remoto de Git y algunos mensajes al cliente siguen usando "TuWebFacil". No renombrar infraestructura sin plan.
+
+---
+
+## [06/10/2026] — Adopción de `.agents/AGENTS.md` como fuente única de verdad
+- **Decisión:** Se crea `.agents/AGENTS.md` como Documento Maestro para agentes de IA, construido a partir de una auditoría del código real. `README.md`, `SUMMARY.md`, `ESTRUCTURA_Y_LOGICA_DEL_PROYECTO.md` y `database_schema.md` pasan a ser **documentación histórica**. `.agents/rules/arquitectura_tuweblista.md` se reduce a un puntero hacia `AGENTS.md`.
+- **Razón:** Las reglas estaban dispersas en varios archivos y varios estaban desactualizados (mencionaban Mercado Pago, Groq, Python 3.8, nombre TuWebFacil), lo que inducía a errores a los agentes.
+- **Impacto:** Flujo de trabajo multiagente (Coordinador / Investigador / Implementador / Verificador) y bucle SDD formalizados.
+
+## [06/10/2026] — Las suites QA E2E requieren autorización explícita
+- **Decisión:** `scripts/utils/qa_suite.py` y `qa_admin_suite.py` dejan de ser obligatorias tras cada cambio; solo se ejecutan con autorización explícita del usuario. Se planifica una suite local con pytest + mocks como tarea futura.
+- **Razón:** Ambas suites apuntan a producción (`tuweblista.com.ar` y Supabase real) y crean/borran datos.
+- **Reemplaza a:** Regla "Obligatoriedad de QA" del antiguo `.agents/rules/arquitectura_tuweblista.md`.
+
+## [06/10/2026] — Modelo de Gemini: congelado hasta ciclo de investigación
+- **Decisión:** No se cambia el modelo ni el SDK de Gemini en módulos que funcionan hasta que un Agente Investigador releve los modelos vigentes y el usuario apruebe una propuesta (modelo canónico + migración de `google-generativeai` a `google-genai`).
+- **Razón:** Hoy conviven `gemini-flash-lite-latest`, `gemini-3.6-flash`, `gemini-2.5-flash` y `gemini-1.5-flash` con un SDK deprecado; cambiar sin evidencia podría romper la generación de webs (core del negocio).
+
+---
+
+## [14/10/2026] — Fixes en publicación de dominios propios (custom_domain y SSL)
+- **Decisión / Correcciones:**
+  1. Se corrigió `check_custom_domain()` en `app.py` para normalizar el host removiendo el prefijo `www.`, permitiendo que tanto `dominio.com.ar` como `www.dominio.com.ar` resuelvan a la misma web sin redirigir al dominio base.
+  2. Se añadió tolerancia a `content` ya parseado como `dict` (proveniente del bot o de Supabase) en `check_custom_domain()` para evitar `TypeError: must be str, not dict` (error 500).
+  3. Se confirmó el flujo de SSL con Certbot: los dominios en Cloudflare deben incluir el registro DNS para `www` para que Let's Encrypt valide ambos certificados sin `NXDOMAIN`.
+- **Razón:** Primer cliente Premium real (`soteria.com.ar`) en producción evidenció el fallo en la resolución de `www` y el parsing de contenido JSON.
+- **Impacto:** Ambos dominios (`soteria.com.ar` y `www.soteria.com.ar`) responden 200 OK bajo HTTPS sin conflicto con otros servicios del VPS.
+
+## [14/10/2026] — Saneamiento de scripts de operaciones y protección de Disgraf Hub
+- **Decisión:**
+  1. Se eliminaron scripts de prueba huérfanos con credenciales hardcodeadas en texto plano y comandos destructivos (`supervisorctl restart all`).
+  2. Se crearon herramientas canónicas en `scripts/ops/`: `safe_deploy.py` (despliegue quirúrgico con whitelist estricta y reinicio exclusivo de `tuwebfacil_*`) y `view_logs.py` (inspección remota segura de logs).
+  3. Las credenciales SSH del VPS se aislaron en `.env.deploy`, ignorado por Git.
+  4. Se actualizó `.gitignore` blindando bases de datos SQLite locales, comprobantes (`receipts/`), resúmenes bancarios, logs y assets pesados.
+- **Razón:** Blindar la coexistencia con Disgraf Hub en el VPS compartido y evitar la fuga de credenciales o sobreescritura accidental de datos en producción.
+- **Impacto:** Operaciones seguras y desacopladas sin riesgo para Disgraf Hub ni caída de servicios en producción.

@@ -1,6 +1,6 @@
-# TuWebFacil: Fábrica de Sitios y Agencia de Marketing Autónoma
+# TuWebLista: Fábrica de Sitios y Agencia de Marketing Autónoma
 
-TuWebFacil es una plataforma que crea, gestiona y vende sitios web automáticamente. Utiliza inteligencia artificial para generar contenido, analizar competidores y proporcionar una experiencia de usuario intuitiva a través de WhatsApp.
+TuWebLista (tuweblista.com.ar) es una plataforma que crea, gestiona y vende sitios web automáticamente. Utiliza inteligencia artificial para generar contenido, analizar competidores y proporcionar una experiencia de usuario intuitiva a través de WhatsApp.
 
 ## Arquitectura del Sistema
 
@@ -8,13 +8,13 @@ El sistema está compuesto por varios módulos que trabajan juntos para proporci
 
 ### Componentes Principales
 
-1. **Core (app.py)**: Aplicación Flask que maneja las interacciones con Telegram o WhatsApp y utiliza Gemini AI para generar respuestas.
+1. **Core (app.py)**: Aplicación Flask principal que maneja las interacciones. Contiene además el Panel de Administración de pagos y marketing.
 
-2. **Receptor de WhatsApp (receiver.py)**: Maneja los webhooks de WhatsApp, procesa los mensajes entrantes y detecta enlaces de Instagram.
+2. **Cerebro del Bot (bot_engine.py)**: Máquina de estados que gestiona los flujos de conversación de WhatsApp (menús, edición de web, recepción de comprobantes).
 
-3. **Emisor de WhatsApp (sender.py)**: Proporciona funcionalidad para enviar mensajes a través de la API de WhatsApp Cloud.
+3. **WhatsApp I/O (receiver.py / sender.py)**: Reciben webhooks y envían mensajes a través de la API oficial de WhatsApp Cloud.
 
-4. **Integración con Mercado Pago (mercadopago_integration.py)**: Gestiona suscripciones y pagos a través de Mercado Pago, con notificaciones automáticas por WhatsApp.
+4. **Pagos (Manuales / Dashboard)**: Las suscripciones se pagan mediante transferencia bancaria (Alias). El cliente envía el comprobante por WhatsApp, y el administrador lo aprueba desde el Dashboard de `app.py`. **NO se usa Mercado Pago.**
 
 5. **Bot de Marketing (marketing_bot.py)**: Genera contenido diario para Instagram y analiza competidores.
 
@@ -43,10 +43,10 @@ La estructura de la base de datos está diseñada para manejar clientes, suscrip
    - Sistema de menús intuitivo para Alta, Baja y Modificaciones (ABM)
    - Funcionalidad de "Undo" para revertir cambios
 
-4. **Suscripciones y Pagos**:
-   - Integración con Mercado Pago para gestionar suscripciones mensuales
-   - Notificaciones automáticas por WhatsApp en caso de fallo en el pago
-   - Gestión de ciclo de vida de suscripciones
+4. **Suscripciones y Pagos (Transferencias)**:
+   - El cliente realiza una transferencia y envía la foto del comprobante al bot.
+   - El bot guarda la imagen y notifica al administrador.
+   - El administrador aprueba el pago desde el dashboard web, activando el Plan Premium.
 
 5. **Marketing Autónomo**:
    - Generación diaria de contenido para Instagram
@@ -79,6 +79,10 @@ MERCADOPAGO_ACCESS_TOKEN=your_mercadopago_token
 INSTAGRAM_ACCESS_TOKEN=your_instagram_token
 INSTAGRAM_BUSINESS_ID=your_instagram_business_id
 ```
+
+### Reglas de Arquitectura Base de Datos
+- **Core (Supabase)**: Gestión de clientes, websites, contenido de la web y pagos.
+- **Soporte local (SQLite - messages.db)**: Usado para almacenar borradores de marketing y mensajes al administrador.
 
 ### Instalación
 
@@ -115,19 +119,13 @@ python app.py
    - Apuntar el webhook a `https://tu-dominio.com/webhook`
    - Verificar el número de teléfono
 
-2. **Telegram**:
-   - Configurar un webhook para el bot de Telegram
-   - Apuntar el webhook a `https://tu-dominio.com/telegram`
-
-3. **Mercado Pago**:
-   - Configurar webhooks para notificaciones de pagos y suscripciones
-   - Apuntar a los endpoints correspondientes
+2. **Pagos (Sin Webhooks Externos)**:
+   - Todo el flujo se maneja mediante recepción de comprobantes fotográficos en WhatsApp y aprobación manual en el dashboard.
 
 ### Gestión de Clientes
 
 1. **Recepción de Mensajes**:
-   - Los mensajes de WhatsApp son recibidos por `receiver.py`
-   - Los mensajes de Telegram son recibidos por `app.py`
+   - Los mensajes de WhatsApp son recibidos por `receiver.py` y procesados lógicamente por `bot_engine.py`.
 
 2. **Procesamiento de Mensajes**:
    - Se utiliza Gemini AI para entender la intención del usuario
@@ -150,7 +148,7 @@ python app.py
 ## Estructura de Archivos
 
 ```
-TuWebFacil/
+TuWebLista/
 ├── app.py                     # Aplicación Flask principal
 ├── receiver.py                # Receptor de webhooks de WhatsApp
 ├── sender.py                  # Emisor de mensajes de WhatsApp
@@ -225,6 +223,15 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo LICENSE par
 
 ## Contacto
 
-TuWebFacil - [@tuwebfacil](https://instagram.com/tuwebfacil)
+## Contacto
 
-Link del proyecto: [https://github.com/tuwebfacil/tuwebfacil](https://github.com/tuwebfacil/tuwebfacil)
+TuWebLista - [@tuweblista](https://instagram.com/tuweblista)
+
+Link del proyecto: [https://tuweblista.com.ar](https://tuweblista.com.ar)
+
+---
+## ⚠️ REGLAS OBLIGATORIAS PARA CUALQUIER AGENTE DE IA
+0. **Análisis Profundo 100% (CRÍTICO):** Ningún agente debe tomar decisiones, refactorizar, o proponer soluciones sin ANTES hacer una inspección exhaustiva de los archivos clave (`app.py`, `bot_engine.py`, etc.). El código base es la única fuente real de verdad.
+1. **Actualización Obligatoria:** Después de cada modificación arquitectónica o cambio en el rumbo del proyecto, el agente **DEBE** actualizar inmediatamente este archivo `README.md` y `SUMMARY.md`.
+2. **Bitácora de Decisiones:** Cualquier decisión estratégica debe registrarse obligatoriamente en `decisions_log.md` detallando el motivo.
+3. **Sinergia:** Todas las conversaciones de este proyecto comparten este mismo archivo de contexto. ¡No crees archivos de reglas duplicados! Modificá este archivo para mantener todo centralizado.

@@ -27,14 +27,14 @@ Desarrollamos un diseño detallado para la experiencia de usuario de WhatsApp en
 - Funcionalidad de "Undo" para revertir cambios
 - Validación de contenido para mantener la integridad del sitio web
 
-### 3. Integración con Mercado Pago
+### 3. Pagos Manuales (Transferencias Bancarias)
 
-Implementamos la integración con Mercado Pago en `mercadopago_integration.py` que proporciona:
+Implementamos un flujo de aprobación manual que proporciona:
 
-- Creación y gestión de planes de suscripción
-- Procesamiento de pagos y suscripciones
-- Manejo de notificaciones de pagos fallidos
-- Envío automático de notificaciones por WhatsApp
+- Envío de alias bancario por WhatsApp y recepción de comprobantes fotográficos.
+- Visualización de comprobantes desde el Dashboard de Administrador (`app.py`).
+- Aprobación o rechazo manual de pagos, lo que activa automáticamente el Plan Premium.
+- Envío automático de notificaciones por WhatsApp sobre el estado del pago.
 
 ### 4. Bot de Marketing para Instagram
 
@@ -71,10 +71,9 @@ Implementamos un sistema de análisis de competencia en `competitor_analysis.py`
 
 ### Gestión de Suscripciones
 
-1. **Planes Personalizados**: Ofrece diferentes planes de suscripción según las necesidades del cliente.
-2. **Pagos Recurrentes**: Gestiona pagos recurrentes a través de Mercado Pago.
-3. **Notificaciones Automáticas**: Envía notificaciones por WhatsApp sobre el estado de la suscripción.
-4. **Recuperación de Pagos**: Maneja automáticamente los intentos de recuperación de pagos fallidos.
+1. **Planes Personalizados**: Ofrece planes gratuitos, mensuales y anuales, con opción de registro de dominios `.com.ar`.
+2. **Pagos Manuales**: El usuario abona mediante transferencia y el administrador aprueba manualmente.
+3. **Notificaciones Automáticas**: El bot avisa cuando el pago fue verificado y el plan fue activado.
 
 ### Marketing Autónomo
 
@@ -92,8 +91,8 @@ Implementamos un sistema de análisis de competencia en `competitor_analysis.py`
 
 2. **Onboarding**:
    - Cliente acepta la propuesta
-   - Se crea una suscripción en Mercado Pago
-   - Cliente realiza el primer pago
+   - Cliente selecciona plan, transfiere el monto y envía el comprobante por WhatsApp
+   - Administrador aprueba el comprobante
 
 3. **Creación de Sitio**:
    - Sistema genera contenido personalizado
@@ -113,11 +112,12 @@ Implementamos un sistema de análisis de competencia en `competitor_analysis.py`
 ## Tecnologías Utilizadas
 
 - **Backend**: Python, Flask
-- **Base de Datos**: Supabase
-- **IA**: Google Gemini (via google-generativeai)
-- **Pagos**: Mercado Pago SDK
-- **Mensajería**: WhatsApp Cloud API, Telegram Bot API
+- **Base de Datos Core**: Supabase (PostgreSQL)
+- **Base de Datos Soporte**: SQLite (para sistema de admin y borradores)
+- **IA**: Google Gemini (visión y texto) y Groq (texto)
+- **Mensajería**: WhatsApp Cloud API (exclusivo)
 - **Social Media**: Instagram Graph API
+- **Geolocalización**: Nominatim (OpenStreetMap)
 
 ## Próximos Pasos
 
