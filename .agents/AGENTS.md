@@ -494,6 +494,16 @@ Todo desarrollo significativo sigue este bucle:
 5. **Coordinador:** Ejecuta `scripts/ops/sync_marketing_posts.py` para subir imágenes al VPS y agendar en `messages.db` a las 19:00 hs.
 6. **VPS:** `tuwebfacil_scheduler` (Supervisor) dispara automáticamente 1 posteo por día a Instagram Graph API.
 
+#### Directrices Estándar de Copywriting para Instagram:
+- **Estructura obligatoria:** Gancho potente → Dolor/Problema → Solución TuWebLista → CTA dual.
+- **CTA dual obligatorio:** Incluir siempre la dirección web escrita y el atajo de comentarios:
+  `🌐 www.tuweblista.com.ar (link directo en nuestra bio)` + *"O comentá DEMO abajo y te la mandamos por privado"*.
+- **Tono:** Español rioplatense (voseo argentino) estricto, empático, sin lenguaje técnico.
+- **Hashtags (4 a 6 por post):**
+  - Fijos de marca: `#TuWebLista #EmprendedoresArgentinos #NegociosLocales #PymeArgentina #PaginaWeb`
+  - Variables de nicho (2 a 3 según el rubro del día): ej. `#GastronomiaArgentina`, `#PeluqueriaCanina`, `#EsteticaArgentina`, `#ElectricistasArgentinos`.
+- **Horario estándar de publicación:** 19:00 hs (hora Argentina).
+
 ### MCPs Disponibles
 - **Context7:** documentación actualizada de librerías (Flask, supabase-py, google-genai, WhatsApp/Graph API).
 
