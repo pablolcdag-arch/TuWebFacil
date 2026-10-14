@@ -367,7 +367,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             
             msg = ("¡Excelente! 🚀 Para que tu web esté online y puedas compartirla, tenés 2 opciones:\n\n"
                    f"🎁 *OPCIÓN 1: Web 100% Gratis*\nTe activamos la página sin costo de por vida bajo nuestro dominio.\nTu link será: https://{slug}.tuweblista.com.ar\n\n"
-                   "💎 *OPCIÓN 2: Web Profesional (.com.ar)*\nBuscamos y registramos un dominio a tu nombre. Costo: $8.500 (dominio anual) + $4.000 (abono mensual).\n\n"
+                   "💎 *OPCIÓN 2: Web Profesional (.com.ar)*\nBuscamos y registramos un dominio a tu nombre. Costo: $8.500 (dominio anual) + $2.000 (abono mensual).\n\n"
                    "¿Qué opción preferís para arrancar?")
             buttons = [
                 {"id": "DOMINIO_GRATIS", "title": "🎁 Usar dominio gratis"},
@@ -696,8 +696,8 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             
             if "El dominio no se encuentra registrado en NIC Argentina" in output:
                 msg = (f"✅ ¡Buenas noticias! **{dominio_limpio}** ESTÁ DISPONIBLE.\n\n"
-                       f"El costo de registrar un dominio en nic.ar a tu nombre es de $8.500 ARS anuales + $4.000 del abono mensual de la web (Total hoy: $12.500).\n\n"
-                       "Para registrarlo y activar tu plan profesional, transferí los $12.500 al siguiente Alias:\n"
+                       f"El costo de registrar un dominio en nic.ar a tu nombre es de $8.500 ARS anuales + $2.000 del abono mensual de la web (Total hoy: $10.500).\n\n"
+                       "Para registrarlo y activar tu plan profesional, transferí los $10.500 al siguiente Alias:\n"
                        "*tuweblista*\n\n"
                        "Una vez que transfieras, envianos la foto del comprobante por acá y lo activaremos.")
                 send_whatsapp_message(wa_id, msg)

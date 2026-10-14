@@ -76,3 +76,13 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   4. Se formalizó la creación del rol multiagente **Generador de Contenido** y **Verificador de Contenido** para desacoplar la redacción creativa del Coordinador en los meses subsiguientes.
 - **Razón:** Lograr presencia continua y profesional sin demanda de tiempo manual diario.
 - **Impacto:** Canal de Instagram funcionando en piloto automático con 30 días de publicaciones activas.
+
+## [14/10/2026] — Estrategia de Pricing Transparente: $2.000/mes y Política "Cero Tarjetas"
+- **Decisión:**
+  1. Se redujo el abono mensual del plan Profesional de $4.000 a **$2.000 ARS/mes** (menos que el costo de un alfajor triple o un café).
+  2. El costo inicial de alta de dominio propio pasa a **$10.500 ARS** ($8.500 registro anual en NIC Argentina al costo + $2.000 de mantenimiento del primer mes).
+  3. Se consolidó como gancho comercial y de conversión la política de **"CERO tarjetas de crédito/débito y CERO suscripciones o débitos automáticos"**: el cliente transfiere mes a mes al alias `tuweblista` solo si desea continuar con el servicio, eliminando toda fricción o temor a cargos sorpresa.
+  4. Se actualizaron en concordancia: landing page (`index.html`), bot de WhatsApp (`bot_engine.py`), prompts de marketing (`app.py`, `instagram_auto_poster.py`) y documentación maestra (`AGENTS.md`).
+- **Razón:** Eliminar la barrera de entrada y la fricción financiera en comerciantes y microemprendedores argentinos, transformando la contratación en una compra impulsiva de bajo costo y máxima retención.
+- **Impacto:** Menor costo de adquisición de clientes, mayor conversión desde la demo gratuita y alineación total entre los mensajes publicitarios, la landing y el bot de WhatsApp.
+

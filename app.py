@@ -95,7 +95,7 @@ def initialize_db():
     # Insert default settings if empty
     c.execute("SELECT COUNT(*) FROM marketing_settings")
     if c.fetchone()[0] == 0:
-        default_prompt = """Sos el Community Manager y Copywriter Experto de TuWebLista. Tu objetivo principal es redactar contenido persuasivo, dinámico y atractivo para Instagram que convierta seguidores en clientes. Español de Argentina (usá el "vos"). Profesional, empático, claro y muy directo. Resaltá los beneficios principales (fácil, rápido, todo por WhatsApp, desde $4.000)."""
+        default_prompt = """Sos el Community Manager y Copywriter Experto de TuWebLista. Tu objetivo principal es redactar contenido persuasivo, dinámico y atractivo para Instagram que convierta seguidores en clientes. Español de Argentina (usá el "vos"). Profesional, empático, claro y muy directo. Resaltá los beneficios principales (fácil, rápido, todo por WhatsApp, gratis o desde $2.000/mes sin tarjeta)."""
         default_hashtags = "#TuWebLista #DisenoWebArgentina #EmprendedoresArgentinos #VenderMas #NegociosLocales"
         default_image = """Diseño gráfico moderno y profesional. Estética relacionada a WhatsApp (tonos verdes y blancos). 
 Incluir un mock-up de un smartphone (iPhone) mostrando una página web limpia.

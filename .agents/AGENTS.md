@@ -27,10 +27,10 @@
 **Modelo comercial (valores hardcodeados hoy en [`bot_engine.py`](../bot_engine.py)):**
 | Plan | Qué incluye | Precio |
 |---|---|---|
-| **Gratis** | Web publicada en `https://{slug}.tuweblista.com.ar` | $0 |
-| **Profesional / Premium** | Dominio `.com.ar` propio registrado en NIC Argentina + web publicada | $8.500 (dominio anual) + $4.000/mes |
+| **Gratis** | Web publicada en `https://{slug}.tuweblista.com.ar` | $0 de por vida (sin tarjeta) |
+| **Profesional / Premium** | Dominio `.com.ar` propio registrado en NIC Argentina + web publicada | $10.500 inicial ($8.500 dominio anual + $2.000 abono 1er mes). Luego $2.000/mes. |
 
-**Cobro:** **Transferencia bancaria al alias `tuweblista`** → el cliente manda la foto del comprobante por WhatsApp → el administrador **aprueba manualmente** desde `/admin`. **NO se usa Mercado Pago ni ninguna pasarela automática** (decisión de negocio vigente).
+**Cobro:** **Transferencia bancaria al alias `tuweblista`** → el cliente manda la foto del comprobante por WhatsApp → el administrador **aprueba manualmente** desde `/admin`. **NO se usa Mercado Pago ni ninguna pasarela automática. CERO tarjetas ni débitos automáticos.** (decisión estratégica clave para eliminar fricción).
 
 **Límite operativo:** máximo **3 webs por número de teléfono** (validado en `/process_form`).
 

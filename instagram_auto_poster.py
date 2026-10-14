@@ -55,7 +55,7 @@ def generate_caption(content_type):
     Comerciantes, artesanos y profesionales independientes en Argentina que solo venden por redes sociales y no tienen página web. Odian las complicaciones técnicas y buscan soluciones simples que les traigan clientes directos al celular.
 
     **TUS 4 PILARES DE VENTA:**
-    1. Precio/Valor: Solo $4.000 ARS mensuales.
+    1. Precio/Valor: Gratis con subdominio, o solo $2.000 ARS mensuales con dominio propio (menos que un alfajor). Cero tarjetas ni débitos automáticos: mes a mes por transferencia bancaria.
     2. Cero Fricción: Todo se maneja por WhatsApp (no tienen que aprender a usar paneles ni plataformas).
     3. Velocidad: Web lista en 30 minutos.
     4. SEO Local: Posicionamiento en Google Maps.
