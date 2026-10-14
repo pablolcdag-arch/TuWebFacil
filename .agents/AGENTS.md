@@ -475,12 +475,24 @@ Todo desarrollo significativo sigue este bucle:
 | **Verificador Backend/Bot** | Verifica imports, lógica, FSM, queries, regresiones; tests locales | ❌ No |
 | **Implementador Front** | `index.html`, `templates/*.html`, Tailwind/JS | ✅ Sí |
 | **Verificador Front** | Sintaxis Jinja/HTML, contrato JSON del template, flujos de UI, responsive | ❌ No |
+| **Generador de Contenido** | Redacta matrices mensuales de Instagram (30 días), copys, ganchos y CSVs para Canva | ❌ No (solo `.csv` y `.json`) |
+| **Verificador de Contenido** | Audita copys (voseo rioplatense, sin promesas falsas, formato CSV Canva, pilares) | ❌ No |
 
 **Invocación del Coordinador:** abrir una conversación nueva y decir: *"Asume el rol de Coordinador"*. El agente leerá este archivo y sabrá que tiene prohibido modificar `.py` o `.html`, y que su tarea es planificar y entregar prompts para las conversaciones ejecutoras.
 
-**Regla para el Coordinador:** al redactar prompts para el Implementador, **NUNCA** pedirle que verifique o audite su propio código. El prompt debe terminar indicando que avise al terminar de codificar, para que el usuario pase el trabajo al Verificador.
+**Regla para el Coordinador:** al redactar prompts para el Implementador o Generador de Contenido, **NUNCA** pedirle que verifique o audite su propio código o copy. El prompt debe terminar indicando que avise al terminar, para que el usuario pase el trabajo al Verificador.
 
 **Regla para el Verificador:** si falla 3 veces en la misma subtarea → escalar al usuario con diagnóstico.
+
+---
+
+### 📱 Flujo de Marketing de Contenidos (Instagram en Piloto Automático)
+1. **Coordinador:** Da el prompt al **Generador de Contenido** especificando el mes y los 6 pilares.
+2. **Generador de Contenido:** Crea los archivos CSV para Canva y el JSON de copys con hashtags.
+3. **Verificador de Contenido:** Revisa tono rioplatense, ortografía, ausencia de claims falsos y formato CSV.
+4. **Usuario:** Abre Canva Pro → "Crear varios" (Bulk Create) con los CSVs → descarga el ZIP de imágenes a su Mac.
+5. **Coordinador:** Ejecuta `scripts/ops/sync_marketing_posts.py` para subir imágenes al VPS y agendar en `messages.db` a las 19:00 hs.
+6. **VPS:** `tuwebfacil_scheduler` (Supervisor) dispara automáticamente 1 posteo por día a Instagram Graph API.
 
 ### MCPs Disponibles
 - **Context7:** documentación actualizada de librerías (Flask, supabase-py, google-genai, WhatsApp/Graph API).

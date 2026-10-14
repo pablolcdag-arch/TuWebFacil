@@ -8,6 +8,7 @@ __pycache__/
 messages.db
 receipts/
 resumenes_banco/
+static/marketing_images/
 
 # Logs
 *.log
@@ -19,6 +20,7 @@ venv/
 
 # Assets locales de marketing
 Marketing_Reels/
+canva_*.csv
 
 # Plantillas de referencia de otros proyectos
 AGENTS_plantilla_visible.md

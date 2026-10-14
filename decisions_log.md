@@ -67,3 +67,12 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   3. Se estandarizó el modelo en `app.py` (`generar_plantilla_dinamica` y `generate_promo_ai`), `instagram_auto_poster.py` y `verificar_pagos.py` usando `gemini-flash-lite-latest`, el cual responde con alta velocidad, voseo correcto y generación de JSON perfecta.
 - **Razón:** Resolver el bloqueo 403 y garantizar estabilidad y velocidad en la generación de demos y copys.
 - **Impacto:** Creación de páginas web demo 100% operativa en producción y local.
+
+## [14/10/2026] — Automatización de Marketing en Instagram y Flujo Bulk Canva
+- **Decisión:**
+  1. Se diseñó la estrategia de marketing mensual para `@tuweblistaok` basada en un ciclo de 6 pilares rotativos (Dolor/Objeción, Nichos de Comercio, Educación, Demostración de Bot, Prueba Social y Oferta Directa).
+  2. Se adoptó el flujo híbrido: Generación de matriz editorial y copys con IA -> Bulk Create en Canva Pro -> Sincronización automática de imágenes y agenda en `messages.db` del VPS mediante `sync_marketing_posts.py`.
+  3. Se programaron los primeros 30 días de contenido para publicarse automáticamente todos los días a las 19:00 hs (del 15/10/2026 al 13/11/2026) a través de `tuwebfacil_scheduler` e Instagram Graph API.
+  4. Se formalizó la creación del rol multiagente **Generador de Contenido** y **Verificador de Contenido** para desacoplar la redacción creativa del Coordinador en los meses subsiguientes.
+- **Razón:** Lograr presencia continua y profesional sin demanda de tiempo manual diario.
+- **Impacto:** Canal de Instagram funcionando en piloto automático con 30 días de publicaciones activas.
