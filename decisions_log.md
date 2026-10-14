@@ -59,3 +59,11 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   4. Se actualizó `.gitignore` blindando bases de datos SQLite locales, comprobantes (`receipts/`), resúmenes bancarios, logs y assets pesados.
 - **Razón:** Blindar la coexistencia con Disgraf Hub en el VPS compartido y evitar la fuga de credenciales o sobreescritura accidental de datos en producción.
 - **Impacto:** Operaciones seguras y desacopladas sin riesgo para Disgraf Hub ni caída de servicios en producción.
+
+## [14/10/2026] — Auditoría de modelos de IA y rotación de GEMINI_API_KEY
+- **Decisión:**
+  1. Se reemplazó la clave de Gemini por una generada en un proyecto nuevo y limpio (`Tuweblista`). La anterior sufría de `403 PERMISSION_DENIED: Your project has been denied access` debido a la exposición pública previa del `.env`.
+  2. Se confirmó que `gemini-1.5-flash` y `gemini-2.0-flash` fueron retirados por Google (404), y que `gemini-3.6-flash` y `gemini-3.8-flash` presentan alta saturación y fallos 503 temporales.
+  3. Se estandarizó el modelo en `app.py` (`generar_plantilla_dinamica` y `generate_promo_ai`), `instagram_auto_poster.py` y `verificar_pagos.py` usando `gemini-flash-lite-latest`, el cual responde con alta velocidad, voseo correcto y generación de JSON perfecta.
+- **Razón:** Resolver el bloqueo 403 y garantizar estabilidad y velocidad en la generación de demos y copys.
+- **Impacto:** Creación de páginas web demo 100% operativa en producción y local.

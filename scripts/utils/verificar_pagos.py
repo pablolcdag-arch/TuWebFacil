@@ -23,7 +23,7 @@ supabase: Client = create_client(supabase_url, supabase_key)
 genai.configure(api_key=gemini_key)
 
 # Usamos el modelo multimodal
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-flash-lite-latest')
 
 def read_bank_statements(directory="resumenes_banco"):
     """Lee todos los CSV o Excel de la carpeta y devuelve un solo string con los datos."""

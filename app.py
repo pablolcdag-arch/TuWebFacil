@@ -992,7 +992,7 @@ def generate_promo_ai():
             return jsonify({"success": False, "error": "Falta GEMINI_API_KEY"})
             
         genai.configure(api_key=gemini_key)
-        model = genai.GenerativeModel('gemini-3.6-flash')
+        model = genai.GenerativeModel('gemini-flash-lite-latest')
         
         prompt = f"""Actúa como Copywriter y Director de Arte. 
 Instrucciones de Texto: {base_prompt}

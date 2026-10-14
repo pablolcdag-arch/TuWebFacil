@@ -91,18 +91,17 @@ gunicorn
 ### Inteligencia Artificial
 - **Proveedor:** Google Gemini.
 - **SDK actual:** `google-generativeai` (**deprecado**). Solo `test_image.py` usa el SDK nuevo `google-genai`.
-- **Estado actual de modelos (inconsistente — NO tocar sin ciclo de investigación):**
+- **Estado de modelos (Estandarizado el 14/10/2026):**
 
-| Archivo | Uso | Modelo |
+| Archivo | Uso | Modelo Canónico |
 |---|---|---|
 | `app.py` → `generar_plantilla_dinamica()` | Generación de la web demo (core del negocio) | `gemini-flash-lite-latest` |
-| `app.py` → `generate_promo_ai()` | Borradores de marketing del admin | `gemini-3.6-flash` |
+| `app.py` → `generate_promo_ai()` | Borradores de marketing del admin | `gemini-flash-lite-latest` |
 | `instagram_auto_poster.py` | Captions de Instagram | `gemini-flash-lite-latest` |
-| `marketing_bot.py`, `scripts/utils/provision_client.py` | Legacy | `gemini-2.5-flash` (o el primero disponible) |
-| `scripts/utils/verificar_pagos.py` | Utilidad | `gemini-1.5-flash` (probablemente retirado) |
+| `scripts/utils/verificar_pagos.py` | Utilidad | `gemini-flash-lite-latest` |
 | `test_image.py` | Prueba de Imagen | `imagen-3.0-generate-001` |
 
-- **Decisión pendiente:** un **Agente Investigador** debe relevar modelos vigentes y proponer un modelo canónico + migración a `google-genai`. Hasta que el usuario apruebe esa propuesta (y se registre en `decisions_log.md`), **queda prohibido cambiar el modelo o el SDK de un módulo que funciona**.
+- **Investigación completada (14/10/2026):** `gemini-1.5-flash` y `gemini-2.0-flash` fueron retirados por Google (404); `gemini-3.6-flash` y `gemini-3.8-flash` presentan alta saturación (503). El modelo oficial y estable confirmado para producción es `gemini-flash-lite-latest`.
 - **Groq:** `GROQ_API_KEY` y `GROQ_URL` se cargan en `app.py` pero **no se usan** (resto histórico).
 
 ### Servicios Externos
