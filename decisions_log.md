@@ -86,3 +86,13 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** Eliminar la barrera de entrada y la fricción financiera en comerciantes y microemprendedores argentinos, transformando la contratación en una compra impulsiva de bajo costo y máxima retención.
 - **Impacto:** Menor costo de adquisición de clientes, mayor conversión desde la demo gratuita y alineación total entre los mensajes publicitarios, la landing y el bot de WhatsApp.
 
+## [14/10/2026] — Migración de Sesiones del Bot a SQLite (`user_sessions`), Modo WAL y Auditoría QA
+- **Decisión:**
+  1. Se migró la máquina de estados del bot de WhatsApp (`user_states` en RAM) a una tabla persistente `user_sessions` en `messages.db` (`phone`, `estado`, `temp_data`, `updated_at`).
+  2. Se adoptó el patrón de resiliencia: lecturas con caché en RAM, escrituras sincronizadas en SQLite, degradación elegante a `IDLE` en caso de fallo de disco y tolerancia a JSON corrupto.
+  3. QA detectó y subsanó un bug bloqueante de file descriptor leaks (`with sqlite3.connect` no cierra la conexión en Python), implementando el cierre explícito con `try...finally: if conn: conn.close()`.
+  4. Se activó el modo de concurrencia `PRAGMA journal_mode=WAL;` en SQLite para permitir lecturas y escrituras multihilo simultáneas sin bloqueos de base de datos.
+  5. Se crearon y aprobaron las suites de verificación automatizadas en `scripts/utils/qa_user_sessions_audit.py` y `scripts/utils/test_user_sessions.py`.
+- **Razón:** Evitar que los usuarios pierdan su sesión y contexto de edición ante reinicios del proceso o del VPS, y garantizar estabilidad concurrente ante ráfagas de mensajes.
+- **Impacto:** Sesiones de usuario 100% persistentes y seguras ante caídas o deploys.
+

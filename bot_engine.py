@@ -1,5 +1,6 @@
 import os
 import json
+import sqlite3
 import requests
 from dotenv import load_dotenv
 from supabase import create_client
@@ -15,7 +16,7 @@ supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
 supabase = create_client(supabase_url, supabase_key) if supabase_url and supabase_key else None
 
-# Diccionario simple en memoria para rastrear el estado del usuario.
+# Diccionario en memoria como caché de sesiones de usuario.
 # Formato: { "numero_wa": {"estado": "MAIN_MENU", "temp_data": {}} }
 user_states = {}
 
@@ -23,10 +24,14 @@ user_states = {}
 IDLE = "IDLE"
 MAIN_MENU = "MAIN_MENU"
 EDIT_MENU = "EDIT_MENU"
+EDIT_MENU_SERVICIOS = "EDIT_MENU_SERVICIOS"
 WAITING_FOR_TITLE = "WAITING_FOR_TITLE"
 WAITING_FOR_SUBTITLE = "WAITING_FOR_SUBTITLE"
+WAITING_FOR_SERVICE_TITLE = "WAITING_FOR_SERVICE_TITLE"
+WAITING_FOR_SERVICE_DESC = "WAITING_FOR_SERVICE_DESC"
 WAITING_FOR_LOCATION = "WAITING_FOR_LOCATION"
 WAITING_FOR_SCHEDULE = "WAITING_FOR_SCHEDULE"
+WAITING_FOR_IMAGE_ROLE = "WAITING_FOR_IMAGE_ROLE"
 WAITING_FOR_RECEIPT = "WAITING_FOR_RECEIPT"
 WAITING_FOR_PLAN_SELECTION = "WAITING_FOR_PLAN_SELECTION"
 WAITING_FOR_DOMAIN_NAME = "WAITING_FOR_DOMAIN_NAME"
@@ -35,6 +40,158 @@ WAITING_FOR_WHATSAPP = "WAITING_FOR_WHATSAPP"
 WAITING_FOR_EMAIL = "WAITING_FOR_EMAIL"
 WAITING_FOR_INSTAGRAM = "WAITING_FOR_INSTAGRAM"
 WAITING_FOR_TRANSFER_PHONE = "WAITING_FOR_TRANSFER_PHONE"
+
+
+def get_db_path():
+    """Retorna la ruta absoluta a messages.db."""
+    cwd_db = os.path.join(os.getcwd(), "messages.db")
+    if os.path.exists(cwd_db):
+        return cwd_db
+    file_dir_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), "messages.db")
+    if os.path.exists(file_dir_db):
+        return file_dir_db
+    return cwd_db
+
+
+def init_sessions_db():
+    """Crea la tabla user_sessions si no existe en messages.db y activa modo WAL."""
+    conn = None
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path, timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                phone TEXT PRIMARY KEY,
+                estado TEXT NOT NULL,
+                temp_data TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error al inicializar tabla user_sessions en {get_db_path()}: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+
+# Inicializar la tabla al cargar el módulo
+init_sessions_db()
+
+
+def get_user_state(wa_id) -> dict:
+    """
+    Obtiene el estado actual y temp_data del usuario.
+    Primero consulta la caché en memoria; si no está, busca en SQLite.
+    Garantiza devolver siempre un diccionario con {'estado': ..., 'temp_data': ...}.
+    """
+    clean_wa_id = str(wa_id).strip()
+    
+    # 1. Caché en memoria
+    if clean_wa_id in user_states:
+        cached = user_states[clean_wa_id]
+        if isinstance(cached, dict) and "estado" in cached:
+            if "temp_data" not in cached or not isinstance(cached["temp_data"], dict):
+                cached["temp_data"] = {}
+            return cached
+
+    # 2. Consultar SQLite
+    conn = None
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path, timeout=10)
+        c = conn.cursor()
+        c.execute("SELECT estado, temp_data FROM user_sessions WHERE phone = ?", (clean_wa_id,))
+        row = c.fetchone()
+        if row:
+            estado, temp_data_raw = row
+            try:
+                temp_data = json.loads(temp_data_raw) if temp_data_raw else {}
+                if not isinstance(temp_data, dict):
+                    temp_data = {}
+            except Exception:
+                temp_data = {}
+            session_data = {"estado": estado or IDLE, "temp_data": temp_data}
+            user_states[clean_wa_id] = session_data
+            return session_data
+    except Exception as e:
+        logging.error(f"Error al leer user_state para {clean_wa_id} de SQLite: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+    # 3. Fallback por defecto si no existe o falló la BD
+    default_session = {"estado": IDLE, "temp_data": {}}
+    user_states[clean_wa_id] = default_session
+    return default_session
+
+
+def set_user_state(wa_id, estado, temp_data=None):
+    """
+    Actualiza el estado y opcionalmente temp_data del usuario en memoria y SQLite.
+    Si temp_data es None, preserva el temp_data existente.
+    """
+    clean_wa_id = str(wa_id).strip()
+
+    if temp_data is None:
+        current = get_user_state(clean_wa_id)
+        final_temp_data = current.get("temp_data", {})
+        if not isinstance(final_temp_data, dict):
+            final_temp_data = {}
+    elif isinstance(temp_data, dict):
+        final_temp_data = temp_data
+    else:
+        final_temp_data = {}
+
+    session_data = {"estado": estado, "temp_data": final_temp_data}
+    user_states[clean_wa_id] = session_data
+
+    # Persistir en SQLite
+    conn = None
+    try:
+        db_path = get_db_path()
+        temp_data_str = json.dumps(final_temp_data, ensure_ascii=False)
+        conn = sqlite3.connect(db_path, timeout=10)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO user_sessions (phone, estado, temp_data, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(phone) DO UPDATE SET
+                estado = excluded.estado,
+                temp_data = excluded.temp_data,
+                updated_at = CURRENT_TIMESTAMP
+        """, (clean_wa_id, estado, temp_data_str))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error al persistir user_state para {clean_wa_id} en SQLite: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+    return session_data
+
+
+def clear_user_state(wa_id):
+    """
+    Limpia la sesión del usuario tanto en memoria como en SQLite.
+    """
+    clean_wa_id = str(wa_id).strip()
+    user_states[clean_wa_id] = {"estado": IDLE, "temp_data": {}}
+
+    conn = None
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path, timeout=10)
+        c = conn.cursor()
+        c.execute("DELETE FROM user_sessions WHERE phone = ?", (clean_wa_id,))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error al limpiar user_state para {clean_wa_id} en SQLite: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 def obtener_web_del_cliente(phone):
     """Busca la web actual del cliente en Supabase usando su teléfono."""
@@ -118,25 +275,19 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
     """Función principal que enruta el mensaje según el estado actual."""
     print(f"DEBUG BOT: Mensaje recibido de {nombre} ({wa_id}): Tipo: {msg_type} - '{texto}'")
     
-    # Inicializar estado si no existe
-    if wa_id not in user_states:
-        user_states[wa_id] = {"estado": IDLE, "temp_data": {}}
-        
-    estado_actual = user_states[wa_id]["estado"]
+    user_session = get_user_state(wa_id)
+    estado_actual = user_session["estado"]
     
     if msg_type not in ["text", "interactive", "image"]:
         send_whatsapp_message(wa_id, "Por favor, escribime por texto o enviame imágenes. Todavía no puedo escuchar audios. 😅")
         return
-    if wa_id not in user_states:
-        user_states[wa_id] = {"estado": IDLE, "temp_data": {}}
-        
-    estado_actual = user_states[wa_id]["estado"]
+
     texto_limpio = texto.strip().lower()
     print(f"DEBUG BOT: Estado actual: {estado_actual}")
     
     # 1. Palabra clave universal de reseteo
     if texto_limpio in ["menu", "menú", "volver", "inicio", "cancelar"]:
-        user_states[wa_id]["estado"] = IDLE
+        clear_user_state(wa_id)
         procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         return
         
@@ -192,9 +343,8 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                                 conn.commit()
                                 
                                 # Movemos el estado
-                                if from_phone in user_states:
-                                    del user_states[from_phone]
-                                user_states[wa_id] = {"estado": IDLE, "temp_data": {}}
+                                clear_user_state(from_phone)
+                                set_user_state(wa_id, IDLE, {})
                                 
                                 send_whatsapp_message(wa_id, "✅ ¡Transferencia exitosa! Ahora sos el administrador de esta página web.")
                                 send_whatsapp_message(from_phone, f"⚠️ El usuario {norm_wa} ha aceptado la transferencia. Ya no tenés acceso a la administración de esta web.")
@@ -234,7 +384,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             {"id": "MAIN_CONTACT", "title": "💬 Hablar con Admin", "description": "Hablar con soporte / admin"}
         ]
         send_whatsapp_list(wa_id, msg, "Abrir Opciones", options, "Panel de Control")
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         return
 
     # === RECEPCIÓN DE IMÁGENES ===
@@ -252,7 +402,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                     res_cli = supabase.table("clients").select("id").ilike("phone", f"%{base_phone}").execute()
                     if res_cli.data:
                         cli_id = res_cli.data[0]["id"]
-                        dominio = user_states.get(wa_id, {}).get("temp_data", {}).get("dominio", "")
+                        dominio = get_user_state(wa_id).get("temp_data", {}).get("dominio", "")
                         supabase.table("payments").insert({
                             "client_id": cli_id,
                             "payment_method": save_path,
@@ -264,7 +414,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             
             msg = "✅ Recibimos el comprobante muchas gracias, en el transcurso del día recibirás una notificación con el 'Pago verificado'. Tu web va a seguir activa, no te preocupes."
             send_whatsapp_message(wa_id, msg)
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
             
             logging.info(f"NUEVO PAGO: {nombre} ({wa_id}) mandó un comprobante.")
             send_whatsapp_message("5491134710787", f"💰 NUEVO PAGO DE {nombre} ({wa_id}). Revisá el servidor.")
@@ -279,14 +429,13 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                 {"id": "FOTO_SRV3", "title": "💼 Servicio 3"}
             ]
             send_whatsapp_list(wa_id, msg, "Elegir Destino", options, "Asignar Foto")
-            user_states[wa_id]["estado"] = "WAITING_FOR_IMAGE_ROLE"
-            user_states[wa_id]["temp_data"]["media_id"] = media_id
+            set_user_state(wa_id, "WAITING_FOR_IMAGE_ROLE", {"media_id": media_id})
         return
 
     # === MÁQUINA DE ESTADOS PRINCIPAL ===
     if estado_actual == "WAITING_FOR_IMAGE_ROLE":
         if texto_limpio in ["foto_hero", "foto_logo", "foto_srv1", "foto_srv2", "foto_srv3"]:
-            media_id_guardado = user_states[wa_id]["temp_data"].get("media_id")
+            media_id_guardado = get_user_state(wa_id).get("temp_data", {}).get("media_id")
             if media_id_guardado:
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 save_dir = os.path.join(base_dir, "static", "uploads")
@@ -318,7 +467,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                         send_whatsapp_message(wa_id, "⚠️ No encontré tu web en el sistema.")
                 else:
                     send_whatsapp_message(wa_id, "❌ Hubo un error al descargar la imagen. Volvé a intentarlo.")
-            user_states[wa_id]["estado"] = MAIN_MENU
+            set_user_state(wa_id, MAIN_MENU, {})
             procesar_mensaje(wa_id, "2", nombre)
             return
 
@@ -328,21 +477,21 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             send_whatsapp_message(wa_id, msg)
         elif texto_limpio == "main_soporte" or texto_limpio == "main_contact":
             send_whatsapp_message(wa_id, "Escribí el mensaje que le querés enviar al administrador.\n\n⚠️ *Aviso*: Esto no es un chat en vivo, pero tu mensaje quedará registrado y te responderemos por este mismo medio en el transcurso del día.")
-            user_states[wa_id]["estado"] = WAITING_FOR_ADMIN_MESSAGE
+            set_user_state(wa_id, WAITING_FOR_ADMIN_MESSAGE)
 
         elif texto_limpio == "main_transfer":
             msg = ("🔄 *Transferir Administración*\n\n"
                    "Para transferir la administración de esta web a otro número, escribí acá abajo el nuevo número de WhatsApp (Ej: 1131234567 o +5491131234567).\n\n"
                    "⚠️ Importante: Una vez confirmada la transferencia, perderás acceso a este menú.")
             send_whatsapp_message(wa_id, msg)
-            user_states[wa_id]["estado"] = WAITING_FOR_TRANSFER_PHONE
+            set_user_state(wa_id, WAITING_FOR_TRANSFER_PHONE)
 
         elif texto_limpio == "main_domain":
             msg = ("🌐 *Buscador Oficial de Dominios (.com.ar)*\n\n"
                    "Escribí acá abajo el nombre que te gustaría tener para tu página (Ej: mipanaderia, estudiojuridico, etc).\n\n"
                    "No hace falta que escribas el '.com.ar', nosotros lo agregamos y verificamos si está disponible en NIC Argentina al instante.")
             send_whatsapp_message(wa_id, msg)
-            user_states[wa_id]["estado"] = WAITING_FOR_DOMAIN_NAME
+            set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME)
             
         elif texto_limpio == "main_editar" or texto_limpio == "2":
             msg = "✏️ *Menú de Edición*\n¿Qué parte de tu página web querés modificar?"
@@ -359,7 +508,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                 {"id": "EDIT_VOLVER", "title": "⬅️ Volver"}
             ]
             send_whatsapp_list(wa_id, msg, "Elegir Sección", options, "Edición de Web")
-            user_states[wa_id]["estado"] = EDIT_MENU
+            set_user_state(wa_id, EDIT_MENU)
             
         elif texto_limpio == "main_publicar" or texto_limpio == "3":
             web_info = obtener_web_del_cliente(wa_id)
@@ -374,15 +523,15 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                 {"id": "DOMINIO_SI", "title": "💎 Buscar Dominio"}
             ]
             send_whatsapp_buttons(wa_id, msg, buttons)
-            user_states[wa_id]["estado"] = WAITING_FOR_DOMAIN_NAME
+            set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME)
 
     elif estado_actual == EDIT_MENU:
         if texto_limpio == "edit_titulo" or texto_limpio == "1":
             send_whatsapp_message(wa_id, "Escribí el nuevo Título que querés para tu web (Por ejemplo: 'Estudio Jurídico Gonzalez'):")
-            user_states[wa_id]["estado"] = WAITING_FOR_TITLE
+            set_user_state(wa_id, WAITING_FOR_TITLE)
         elif texto_limpio == "edit_subtitulo" or texto_limpio == "2":
             send_whatsapp_message(wa_id, "Escribí el nuevo *Subtítulo*\n*(Por ejemplo: 'Más de 20 años ayudando a las personas'):*")
-            user_states[wa_id]["estado"] = WAITING_FOR_SUBTITLE
+            set_user_state(wa_id, WAITING_FOR_SUBTITLE)
         elif texto_limpio == "edit_servicios" or texto_limpio == "3":
             msg = "¿Qué servicio querés editar?"
             options = [
@@ -392,13 +541,13 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                 {"id": "EDIT_VOLVER", "title": "⬅️ Volver"}
             ]
             send_whatsapp_list(wa_id, msg, "Elegir Servicio", options, "Editar Servicios")
-            user_states[wa_id]["estado"] = "EDIT_MENU_SERVICIOS"
+            set_user_state(wa_id, "EDIT_MENU_SERVICIOS")
         elif texto_limpio == "edit_location" or texto_limpio == "4":
             send_whatsapp_message(wa_id, "Escribí la nueva Ubicación o Dirección (Por ejemplo: 'Avenida Corrientes 1000, CABA'. Mientras más exacto, mejor aparecerá en el mapa, tambien podes poner ciudad y provincia si no queres poner una direccion exacta):")
-            user_states[wa_id]["estado"] = WAITING_FOR_LOCATION
+            set_user_state(wa_id, WAITING_FOR_LOCATION)
         elif texto_limpio == "edit_schedule" or texto_limpio == "5":
             send_whatsapp_message(wa_id, "Escribí tus *Horarios de Atención*\n*(Por ejemplo: 'Lunes a Viernes de 9 a 18hs').*\n\nSi no querés mostrar los horarios, escribí *Ocultar*:")
-            user_states[wa_id]["estado"] = WAITING_FOR_SCHEDULE
+            set_user_state(wa_id, WAITING_FOR_SCHEDULE)
         elif texto_limpio == "edit_imagenes" or texto_limpio == "6":
             msg = ("💡 *Tamaños sugeridos:*\n"
                    "• *Foto Principal (Hero):* Horizontal apaisada (16:9) aprox 1920x1080 px.\n"
@@ -406,58 +555,58 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                    "📸 *¡Es súper fácil cambiar las fotos!*\n"
                    "Simplemente *enviame la foto por este chat ahora mismo* y te preguntaremos dónde querés ubicarla.")
             send_whatsapp_message(wa_id, msg)
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
         elif texto_limpio == "edit_whatsapp":
             send_whatsapp_message(wa_id, "Escribí el número de WhatsApp donde querés recibir las consultas de tus clientes (Ej: +54 9 1131234567 o 1131234567).")
-            user_states[wa_id]["estado"] = WAITING_FOR_WHATSAPP
+            set_user_state(wa_id, WAITING_FOR_WHATSAPP)
 
         elif texto_limpio == "edit_email":
             send_whatsapp_message(wa_id, "Escribí la dirección de correo electrónico que querés mostrar en la sección de contacto de tu web (Ej: info@empresa.com).\n\nSi no querés mostrar ningún correo, simplemente escribí *Ocultar*.")
-            user_states[wa_id]["estado"] = WAITING_FOR_EMAIL
+            set_user_state(wa_id, WAITING_FOR_EMAIL)
         elif texto_limpio == "edit_instagram" or texto_limpio == "9":
             send_whatsapp_message(wa_id, "Escribí tu usuario de Instagram (Ej: @minegocio) o pegá el enlace directo a tu perfil.\n\nSi no querés mostrar tu Instagram en la web, simplemente escribí *Ocultar*.")
-            user_states[wa_id]["estado"] = WAITING_FOR_INSTAGRAM
+            set_user_state(wa_id, WAITING_FOR_INSTAGRAM)
 
         elif texto_limpio == "edit_volver" or texto_limpio == "0":
-            user_states[wa_id]["estado"] = IDLE
+            clear_user_state(wa_id)
             procesar_mensaje(wa_id, "quiero confirmar mi web", nombre) # Simulamos volver a entrar
         else:
             send_whatsapp_message(wa_id, "Por favor, elegí una opción de la lista.")
             
     elif estado_actual == "EDIT_MENU_SERVICIOS":
         if texto_limpio == "edit_srv_1" or texto_limpio == "1":
-            user_states[wa_id]["temp_data"]["servicio_idx"] = 0
             send_whatsapp_message(wa_id, "Escribí el nuevo *Título* para el Servicio 1:")
-            user_states[wa_id]["estado"] = "WAITING_FOR_SERVICE_TITLE"
+            set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 0})
         elif texto_limpio == "edit_srv_2" or texto_limpio == "2":
-            user_states[wa_id]["temp_data"]["servicio_idx"] = 1
             send_whatsapp_message(wa_id, "Escribí el nuevo *Título* para el Servicio 2:")
-            user_states[wa_id]["estado"] = "WAITING_FOR_SERVICE_TITLE"
+            set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 1})
         elif texto_limpio == "edit_srv_3" or texto_limpio == "3":
-            user_states[wa_id]["temp_data"]["servicio_idx"] = 2
             send_whatsapp_message(wa_id, "Escribí el nuevo *Título* para el Servicio 3:")
-            user_states[wa_id]["estado"] = "WAITING_FOR_SERVICE_TITLE"
+            set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 2})
         elif texto_limpio == "edit_volver" or texto_limpio == "0":
-            user_states[wa_id]["estado"] = MAIN_MENU
+            set_user_state(wa_id, MAIN_MENU, {})
             procesar_mensaje(wa_id, "2", nombre)
         else:
             send_whatsapp_message(wa_id, "Por favor, elegí un servicio de la lista.")
             
     elif estado_actual == "WAITING_FOR_SERVICE_TITLE":
         nuevo_titulo = texto.strip()
-        user_states[wa_id]["temp_data"]["nuevo_titulo_srv"] = nuevo_titulo
+        current_data = get_user_state(wa_id).get("temp_data", {})
+        current_data["nuevo_titulo_srv"] = nuevo_titulo
         send_whatsapp_message(wa_id, "Excelente. Ahora escribí la *Descripción* para este servicio\n*(Por ejemplo: 'Asesoramiento legal integral personalizado'):*")
-        user_states[wa_id]["estado"] = "WAITING_FOR_SERVICE_DESC"
+        set_user_state(wa_id, "WAITING_FOR_SERVICE_DESC", current_data)
         
     elif estado_actual == "WAITING_FOR_SERVICE_DESC":
         nueva_desc = texto.strip()
-        idx = user_states[wa_id]["temp_data"].get("servicio_idx", 0)
-        nuevo_titulo = user_states[wa_id]["temp_data"].get("nuevo_titulo_srv", "")
+        user_session = get_user_state(wa_id)
+        temp_data = user_session.get("temp_data", {})
+        idx = temp_data.get("servicio_idx", 0)
+        nuevo_titulo = temp_data.get("nuevo_titulo_srv", "")
         
         can_edit, remaining = verificar_y_consumir_cuota(wa_id)
         if not can_edit:
             send_whatsapp_message(wa_id, "¡Ups! 🛑 Llegaste a tu límite de ediciones gratuitas de este mes.\n\nPara seguir haciendo cambios hoy, comunicate con el soporte tecnico.")
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
             return
             
         web_data = obtener_web_del_cliente(wa_id)
@@ -481,7 +630,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             msg = "⚠️ No pude encontrar tu web."
             
         send_whatsapp_message(wa_id, msg)
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         procesar_mensaje(wa_id, "2", nombre)
             
     elif estado_actual == WAITING_FOR_TITLE:
@@ -492,7 +641,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             msg = ("¡Ups! 🛑 Llegaste a tu límite de ediciones gratuitas de este mes.\n\n"
                    "Para seguir haciendo cambios hoy, comunicate con el soporte tecnico.")
             send_whatsapp_message(wa_id, msg)
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
             return
             
         # Actualizar en BD
@@ -510,7 +659,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             msg = "⚠️ No pude encontrar tu web en la base de datos (quizás fue creada como demo anónima)."
             
         send_whatsapp_message(wa_id, msg)
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         procesar_mensaje(wa_id, "2", nombre)
         
     elif estado_actual == WAITING_FOR_SUBTITLE:
@@ -521,7 +670,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             msg = ("¡Ups! 🛑 Llegaste a tu límite de ediciones gratuitas de este mes.\n\n"
                    "Para seguir haciendo cambios hoy, comunicate con el soporte tecnico.")
             send_whatsapp_message(wa_id, msg)
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
             return
             
         # Actualizar en BD
@@ -539,7 +688,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             msg = "⚠️ No pude encontrar tu web."
             
         send_whatsapp_message(wa_id, msg)
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         procesar_mensaje(wa_id, "2", nombre)
         
     elif estado_actual == WAITING_FOR_LOCATION:
@@ -547,7 +696,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
         can_edit, remaining = verificar_y_consumir_cuota(wa_id)
         if not can_edit:
             send_whatsapp_message(wa_id, "¡Ups! 🛑 Llegaste a tu límite de ediciones gratuitas de este mes.\n\nPara seguir haciendo cambios hoy, comunicate con el soporte tecnico.")
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
             return
             
         web_data = obtener_web_del_cliente(wa_id)
@@ -566,7 +715,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             msg = "⚠️ No pude encontrar tu web."
             
         send_whatsapp_message(wa_id, msg)
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         procesar_mensaje(wa_id, "2", nombre)
         
     elif estado_actual == WAITING_FOR_SCHEDULE:
@@ -574,7 +723,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
         can_edit, remaining = verificar_y_consumir_cuota(wa_id)
         if not can_edit:
             send_whatsapp_message(wa_id, "¡Ups! 🛑 Llegaste a tu límite de ediciones gratuitas de este mes.\n\nPara seguir haciendo cambios hoy, comunicate con el soporte tecnico.")
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
             return
             
         web_data = obtener_web_del_cliente(wa_id)
@@ -596,7 +745,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             msg = "⚠️ No pude encontrar tu web."
             
         send_whatsapp_message(wa_id, msg)
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         procesar_mensaje(wa_id, "2", nombre)
         
     elif estado_actual == WAITING_FOR_WHATSAPP:
@@ -617,7 +766,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             logging.error(f"Error actualizando whatsapp: {e}")
             send_whatsapp_message(wa_id, "❌ Error al actualizar.")
         
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         procesar_mensaje(wa_id, "2", nombre)
 
     elif estado_actual == WAITING_FOR_EMAIL:
@@ -641,7 +790,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             logging.error(f"Error actualizando email: {e}")
             send_whatsapp_message(wa_id, "❌ Error al actualizar.")
         
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         procesar_mensaje(wa_id, "2", nombre)
 
     elif estado_actual == WAITING_FOR_INSTAGRAM:
@@ -678,7 +827,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             logging.error(f"Error actualizando instagram: {e}")
             send_whatsapp_message(wa_id, "❌ Error al actualizar.")
         
-        user_states[wa_id]["estado"] = MAIN_MENU
+        set_user_state(wa_id, MAIN_MENU, {})
         procesar_mensaje(wa_id, "2", nombre)
 
     elif estado_actual == WAITING_FOR_DOMAIN_NAME:
@@ -701,8 +850,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                        "*tuweblista*\n\n"
                        "Una vez que transfieras, envianos la foto del comprobante por acá y lo activaremos.")
                 send_whatsapp_message(wa_id, msg)
-                user_states[wa_id]["estado"] = WAITING_FOR_RECEIPT
-                user_states[wa_id]["temp_data"]["dominio"] = dominio_limpio
+                set_user_state(wa_id, WAITING_FOR_RECEIPT, {"dominio": dominio_limpio})
             else:
                 msg = (f"❌ Lo sentimos, **{dominio_limpio}** ya está registrado por otra persona.\n\n"
                        "¡Escribí otro nombre para volver a intentar!")
@@ -737,11 +885,11 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                    f"*{codigo_mudanza}*\n\n"
                    "Una vez que reciba ese mensaje, la web se transferirá automáticamente.")
             send_whatsapp_message(wa_id, msg)
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
         except Exception as e:
             logging.error(f"Error saving transfer: {e}")
             send_whatsapp_message(wa_id, "⚠️ Hubo un error al procesar la transferencia. Intentá nuevamente.")
-            user_states[wa_id]["estado"] = IDLE
+            set_user_state(wa_id, IDLE, {})
 
     elif estado_actual == WAITING_FOR_ADMIN_MESSAGE:
         import sqlite3
@@ -764,7 +912,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
         
         send_whatsapp_message(wa_id, "✅ Tu mensaje fue enviado con éxito. En el transcurso del día un administrador revisará tu consulta y te responderá por acá.")
         send_whatsapp_message("5491134710787", f"✉️ NUEVO MENSAJE DE {nombre} ({wa_id}):\n\n{texto}\n\nRevisá el dashboard para contestarle.")
-        user_states[wa_id]["estado"] = IDLE
+        set_user_state(wa_id, IDLE, {})
 
     else:
         # Fallback si estamos en IDLE

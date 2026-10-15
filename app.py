@@ -51,6 +51,13 @@ def initialize_db():
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     
+    # Create user_sessions if not exists
+    c.execute('''CREATE TABLE IF NOT EXISTS user_sessions
+                 (phone TEXT PRIMARY KEY,
+                  estado TEXT NOT NULL,
+                  temp_data TEXT,
+                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+                  
     # Create admin_messages if not exists
     c.execute('''CREATE TABLE IF NOT EXISTS admin_messages
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
