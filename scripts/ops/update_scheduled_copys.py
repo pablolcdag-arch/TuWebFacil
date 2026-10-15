@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-update_scheduled_copys.py — Inyecta el gancho de transparencia ($2.000/mes y Cero Tarjetas)
+update_scheduled_copys.py — Inyecta la firma canónica completa de transparencia
+(NIC.ar $8.500 al año, $0 configuración técnica, $2.000 abono y Cero Tarjetas)
 en los 30 copys locales y en la base de datos de producción (messages.db) del VPS.
 """
 
@@ -14,12 +15,15 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 DEPLOY_ENV_PATH = os.path.join(BASE_DIR, ".env.deploy")
 JSON_PATH = os.path.join(BASE_DIR, "copys_completos_instagram_30_dias.json")
 
-HOOK_TEXT = (
-    "💡 ¿Cuánto cuesta?\n"
-    "• Web 100% GRATIS con nuestro dominio.\n"
-    "• O con dominio propio .com.ar por $2.000/mes (menos que un alfajor 🍫).\n"
-    "🔒 CERO tarjetas ni suscripciones: transferís mes a mes solo si querés seguir."
+CANONICAL_SIGNATURE = (
+    "💡 ¿Cuánto cuesta tener tu web?\n"
+    "• Con subdominio: Solo $2.000 al mes (menos que un alfajor 🍫).\n"
+    "• Con dominio propio .com.ar: $8.500 al año (costo oficial de NIC Argentina).\n"
+    "🎁 Toda la configuración técnica del dominio y servidor te la hacemos 100% GRATIS (otras agencias te cobran más de $80.000 por esto).\n"
+    "🔒 Cero tarjetas ni ataduras: pagás mes a mes por transferencia solo si querés seguir."
 )
+
+OLD_HOOK_PREFIX = "💡 ¿Cuánto cuesta"
 
 def update_local_json():
     print("📖 Leyendo copys_completos_instagram_30_dias.json...")
@@ -29,37 +33,38 @@ def update_local_json():
     updated_posts = []
     for p in posts:
         caption = p["caption"]
-        # Evitar duplicar el hook si ya estuviera
-        if "💡 ¿Cuánto cuesta?" not in caption:
-            # Insertar antes del bloque de CTA ("Probá tu demo", "Creá tu menú", etc. o antes de hashtags)
-            # Buscamos dónde está el link a tuweblista o hashtags
-            if "www.tuweblista.com.ar" in caption:
-                # Partir en la oración que menciona tuweblista
-                partes = caption.split("\n\n")
-                new_partes = []
-                inserted = False
-                for part in partes:
-                    if ("www.tuweblista.com.ar" in part or "#" in part) and not inserted:
-                        new_partes.append(HOOK_TEXT)
-                        inserted = True
-                    new_partes.append(part)
-                if not inserted:
-                    new_partes.append(HOOK_TEXT)
-                new_caption = "\n\n".join(new_partes)
-            else:
-                # Si no tiene el link por alguna razón, antes de los hashtags
-                partes = caption.split("\n\n#")
-                if len(partes) > 1:
-                    new_caption = partes[0] + "\n\n" + HOOK_TEXT + "\n\n#" + partes[1]
+        
+        # Si ya tiene un bloque de "¿Cuánto cuesta", lo reemplazamos
+        if OLD_HOOK_PREFIX in caption:
+            partes = caption.split("\n\n")
+            new_partes = []
+            skip = False
+            for part in partes:
+                if part.startswith(OLD_HOOK_PREFIX):
+                    new_partes.append(CANONICAL_SIGNATURE)
                 else:
-                    new_caption = caption + "\n\n" + HOOK_TEXT
-            p["caption"] = new_caption
+                    new_partes.append(part)
+            p["caption"] = "\n\n".join(new_partes)
+        else:
+            # Si no lo tiene, insertar antes de www.tuweblista.com.ar o hashtags
+            partes = caption.split("\n\n")
+            new_partes = []
+            inserted = False
+            for part in partes:
+                if ("www.tuweblista.com.ar" in part or "#" in part) and not inserted:
+                    new_partes.append(CANONICAL_SIGNATURE)
+                    inserted = True
+                new_partes.append(part)
+            if not inserted:
+                new_partes.append(CANONICAL_SIGNATURE)
+            p["caption"] = "\n\n".join(new_partes)
+
         updated_posts.append(p)
 
     with open(JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(updated_posts, f, ensure_ascii=False, indent=2)
 
-    print("✅ Archivo JSON local actualizado con éxito.")
+    print("✅ Archivo JSON local actualizado con la firma canónica completa.")
     return updated_posts
 
 def update_vps_database(updated_posts):
