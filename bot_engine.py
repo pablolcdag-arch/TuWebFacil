@@ -368,6 +368,36 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
         finally:
             conn.close()
             
+    # 1.6 Interceptar respuestas al flujo del Día 27 (Trial 30 días)
+    # Soporte para botones TRIAL_SUBDOMINIO, TRIAL_DOMINIO y texto tolerante
+    is_trial_subdominio = (
+        texto_limpio == "trial_subdominio" or
+        texto_limpio in ["subdominio", "opcion 1", "opción 1"] or
+        (estado_actual == IDLE and texto_limpio in ["1", "opcion 1", "opción 1", "subdominio"])
+    )
+
+    is_trial_dominio = (
+        texto_limpio == "trial_dominio" or
+        texto_limpio in ["opcion 2", "opción 2"] or
+        (estado_actual == IDLE and texto_limpio in ["2", "opcion 2", "opción 2", "dominio", "dominio propio"])
+    )
+
+    if is_trial_subdominio:
+        set_user_state(wa_id, WAITING_FOR_RECEIPT, {"plan": "subdominio", "monto": 2000})
+        msg = ("¡Excelente elección! 🚀 Tu página seguirá online en su dirección actual.\n\n"
+               "Para renovar tu mes activo, transferí $2.000 al siguiente Alias:\n"
+               "*tuweblista*\n\n"
+               "Una vez que transfieras, envianos la foto del comprobante por acá y lo activaremos en el día.")
+        send_whatsapp_message(wa_id, msg)
+        return
+
+    if is_trial_dominio:
+        set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME, {"plan": "custom_domain", "monto": 10500})
+        msg = ("¡Excelente! 💎 Vamos a registrar tu propio dominio .com.ar.\n\n"
+               "Escribí el nombre que te gustaría tener (por ejemplo: 'minegocio.com.ar' o 'minegocio'):")
+        send_whatsapp_message(wa_id, msg)
+        return
+
     # 2. Detectar intención de inicio (Confirmar mi web) - Esto resetea al MAIN MENU
     if "confirmar mi web" in texto_limpio:
         msg = (f"¡Hola {nombre}! 🎉 Qué bueno que te gustó tu demo.\n\n"
@@ -850,7 +880,13 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                        "*tuweblista*\n\n"
                        "Una vez que transfieras, envianos la foto del comprobante por acá y lo activaremos.")
                 send_whatsapp_message(wa_id, msg)
-                set_user_state(wa_id, WAITING_FOR_RECEIPT, {"dominio": dominio_limpio})
+                current_temp = get_user_state(wa_id).get("temp_data") or {}
+                current_temp["dominio"] = dominio_limpio
+                if "plan" not in current_temp:
+                    current_temp["plan"] = "custom_domain"
+                if "monto" not in current_temp:
+                    current_temp["monto"] = 10500
+                set_user_state(wa_id, WAITING_FOR_RECEIPT, current_temp)
             else:
                 msg = (f"❌ Lo sentimos, **{dominio_limpio}** ya está registrado por otra persona.\n\n"
                        "¡Escribí otro nombre para volver a intentar!")
@@ -913,6 +949,9 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
         send_whatsapp_message(wa_id, "✅ Tu mensaje fue enviado con éxito. En el transcurso del día un administrador revisará tu consulta y te responderá por acá.")
         send_whatsapp_message("5491134710787", f"✉️ NUEVO MENSAJE DE {nombre} ({wa_id}):\n\n{texto}\n\nRevisá el dashboard para contestarle.")
         set_user_state(wa_id, IDLE, {})
+
+    elif estado_actual == WAITING_FOR_RECEIPT:
+        send_whatsapp_message(wa_id, "📸 Por favor, enviame la foto o captura del comprobante de transferencia por acá para que podamos verificarlo.\n\n(Si querés volver al menú principal, escribí *menu*)")
 
     else:
         # Fallback si estamos en IDLE

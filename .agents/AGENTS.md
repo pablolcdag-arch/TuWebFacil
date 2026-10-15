@@ -446,7 +446,9 @@ python -c "import app; import receiver; import bot_engine; print('OK imports')"
 ### ⚠️ Regla de deploy general
 Nunca deployar sin haber verificado localmente los criterios de aceptación.
 
-**REGLA ESTRICTA DE ROLES (DEPLOY):** **SOLO EL AGENTE COORDINADOR, CON AUTORIZACIÓN EXPLÍCITA DEL USUARIO, PUEDE EJECUTAR DEPLOYS, `git commit` O `git push`.** Los Agentes Implementadores y Verificadores tienen PROHIBIDO hacer commits, push o deploys. Su trabajo finaliza entregando el código verificado.
+**REGLA ESTRICTA DE ROLES (DEPLOY Y DOCUMENTACIÓN):** 
+1. **SOLO EL AGENTE COORDINADOR, CON AUTORIZACIÓN EXPLÍCITA DEL USUARIO, PUEDE EJECUTAR DEPLOYS, `git commit` O `git push`.** Los Agentes Implementadores y Verificadores tienen PROHIBIDO hacer commits, push o deploys. Su trabajo finaliza entregando el código verificado.
+2. **SOLO EL AGENTE COORDINADOR PUEDE EDITAR `decisions_log.md`, `.agents/AGENTS.md` O CUALQUIER ARCHIVO DE DOCUMENTACIÓN ESTRATÉGICA.** Los Agentes Implementadores y Verificadores tienen terminantemente PROHIBIDO tocar estos archivos. El Coordinador es la única fuente de verdad y el único responsable de registrar decisiones arquitectónicas al momento de auditar y autorizar el deploy.
 
 ---
 

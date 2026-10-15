@@ -96,3 +96,16 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** Evitar que los usuarios pierdan su sesión y contexto de edición ante reinicios del proceso o del VPS, y garantizar estabilidad concurrente ante ráfagas de mensajes.
 - **Impacto:** Sesiones de usuario 100% persistentes y seguras ante caídas o deploys.
 
+## [14/10/2026] — Implementación del Flujo Interactivo del Día 27 (Trial Closing)
+- **Decisión:**
+  1. Se actualizó el cron de avisos (`scripts/ops/upsell_cron.py`) para activar el aviso al día 27 de la prueba gratuita (`days_active >= 27`), descartando webs con dominios propios, clientes con suscripción activa paga o webs ya avisadas (`upsell_logs`).
+  2. Se despacha un mensaje interactivo con botones de WhatsApp (`TRIAL_SUBDOMINIO` con título "🟢 Subdominio $2.000" de 19 caracteres y `TRIAL_DOMINIO` con título "💎 Dominio Propio" de 16 caracteres), respetando el límite estricto de <= 20 caracteres por botón de Meta.
+  3. En `bot_engine.py`, se implementó la interceptación de respuestas (botones o texto: "1", "subdominio", "opcion 1", "2", "dominio", "opcion 2"):
+     - Opción 1: Transiciona a `WAITING_FOR_RECEIPT` con `temp_data = {"plan": "subdominio", "monto": 2000}` e instruye la transferencia bancaria al alias `tuweblista`.
+     - Opción 2: Transiciona a `WAITING_FOR_DOMAIN_NAME` con `temp_data = {"plan": "custom_domain", "monto": 10500}`, busca disponibilidad en NIC.ar vía `whois` y, si está libre, pasa a `WAITING_FOR_RECEIPT` preservando `plan`, `monto` y `dominio`.
+     - Al recibir imagen de comprobante en `WAITING_FOR_RECEIPT`, se registra el pago en Supabase y se resetea el estado a `IDLE`.
+  4. Se implementó la suite de prueba integral `scripts/utils/test_day27_flow.py` con 100% PASS, y se verificó compatibilidad con `qa_user_sessions_audit.py` sin regresiones.
+- **Razón:** Automatizar el cierre comercial del trial de 30 días 3 días antes de su vencimiento, maximizando la retención y conversión sin intervención manual.
+- **Impacto:** Proceso de upsell y cobranza completamente autónomo e interactivo vía WhatsApp.
+
+
