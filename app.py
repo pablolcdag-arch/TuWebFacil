@@ -297,7 +297,7 @@ def check_custom_domain():
             
             # Chequear si está en mantenimiento por falta de pago
             if web.get('status') == 'maintenance':
-                return "<h1>Sitio suspendido temporalmente.</h1><p>Por favor, comuníquese con administración.</p>", 402
+                return render_template('paused.html', bot_phone=BOT_PHONE, slug=domain_to_check), 402
                 
             cont = supabase.table("website_content").select("*").eq("website_id", web["id"]).eq("is_current", True).execute()
             cli = supabase.table("clients").select("*").eq("id", web["client_id"]).execute()
@@ -439,7 +439,7 @@ def client_website(client_slug):
                 
                 # Chequear si está en mantenimiento por falta de pago
                 if web.get('status') == 'maintenance':
-                    return "<h1>Sitio suspendido temporalmente.</h1><p>Por favor, comuníquese con administración al WhatsApp.</p>", 402
+                    return render_template('paused.html', bot_phone=BOT_PHONE, slug=client_slug), 402
 
                 cont = supabase.table("website_content").select("*").eq("website_id", web["id"]).eq("is_current", True).execute()
                 cli = supabase.table("clients").select("*").eq("id", web["client_id"]).execute()

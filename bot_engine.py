@@ -398,6 +398,23 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
         send_whatsapp_message(wa_id, msg)
         return
 
+    # 1.7 Interceptar intención de reactivación de web pausada ("reactivar mi web", "reactivar")
+    if "reactivar mi web" in texto_limpio or "reactivar" in texto_limpio:
+        web_info = obtener_web_del_cliente(wa_id)
+        msg = (f"¡Hola {nombre}! 👋 Tu web está guardada y lista para reactivarse.\n\n"
+               "Para volver a ponerla online hoy mismo por solo $2.000/mes (o con dominio .com.ar propio por $10.500), transferí el monto al siguiente Alias:\n"
+               "*tuweblista*\n\n"
+               "Una vez que transfieras, envianos la foto del comprobante por acá y la activaremos de inmediato. 🚀")
+        send_whatsapp_message(wa_id, msg)
+        temp_data = {"accion": "reactivacion", "monto": 2000}
+        if web_info:
+            if "slug" in web_info:
+                temp_data["slug"] = web_info["slug"]
+            if "website_id" in web_info:
+                temp_data["website_id"] = web_info["website_id"]
+        set_user_state(wa_id, WAITING_FOR_RECEIPT, temp_data)
+        return
+
     # 2. Detectar intención de inicio (Confirmar mi web) - Esto resetea al MAIN MENU
     if "confirmar mi web" in texto_limpio:
         msg = (f"¡Hola {nombre}! 🎉 Qué bueno que te gustó tu demo.\n\n"

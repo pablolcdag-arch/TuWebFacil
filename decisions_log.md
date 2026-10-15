@@ -108,4 +108,15 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** Automatizar el cierre comercial del trial de 30 días 3 días antes de su vencimiento, maximizando la retención y conversión sin intervención manual.
 - **Impacto:** Proceso de upsell y cobranza completamente autónomo e interactivo vía WhatsApp.
 
+## [14/10/2026] — Implementación de la Pantalla de "Sitio Pausado" (Día 30) y Flujo de Reactivación
+- **Decisión:**
+  1. Se rediseñó por completo `templates/paused.html` con estética oscura moderna, Tailwind CSS, botón dinámico de reactivación directa a WhatsApp y erradicación total del branding legacy "TuWebFacil" hacia **TuWebLista**.
+  2. En `app.py`, se reemplazó el texto plano hardcodeado de mantenimiento por `render_template('paused.html', bot_phone=BOT_PHONE, slug=...)` con código HTTP 402 (*Payment Required*) tanto para subdominios como para dominios personalizados.
+  3. En `daily_billing_cron.py`, se implementó la detección de webs con trial vencido (`days_active >= 30`) sin suscripción activa paga, suspendiéndolas a `status = 'maintenance'` y reportando el resumen diario por WhatsApp al administrador.
+  4. En `bot_engine.py`, se implementó la intención de reactivación ("reactivar mi web", "reactivar") guiando al usuario con las instrucciones de pago por transferencia y pase a `WAITING_FOR_RECEIPT`.
+  5. Se implementó la suite automatizada `scripts/utils/test_paused_flow.py` con 100% PASS, validada conjuntamente con `test_day27_flow.py` y `qa_user_sessions_audit.py` (0 regresiones).
+- **Razón:** Proveer un cierre elegante al ciclo de prueba de 30 días, protegiendo los datos del usuario durante 15 días y habilitando un canal directo de reactivación por WhatsApp sin fricciones.
+- **Impacto:** Ciclo de vida del cliente (Día 0 Demo -> Día 27 Aviso interactivo -> Día 30 Pausado -> Reactivación) 100% automatizado y en producción.
+
+
 
