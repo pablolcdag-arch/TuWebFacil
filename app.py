@@ -118,17 +118,36 @@ Elementos: Ícono de WhatsApp, cursor haciendo clic."""
 initialize_db()
 
 def get_draft_prices_by_token(token):
-    """Busca en user_sessions si existe un draft_token generado por el bot y retorna draft_prices."""
+    """Busca en price_drafts y en user_sessions si existe un draft_token generado por el bot y retorna draft_prices."""
     if not token:
         return None
     db_path = os.path.join(os.getcwd(), 'messages.db')
     if not os.path.exists(db_path):
-        return None
+        file_dir_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'messages.db')
+        if os.path.exists(file_dir_db):
+            db_path = file_dir_db
+        elif os.path.exists('/var/www/tuwebfacil/messages.db'):
+            db_path = '/var/www/tuwebfacil/messages.db'
+        else:
+            return None
     conn = None
     try:
         conn = sqlite3.connect(db_path, timeout=5)
         conn.execute("PRAGMA journal_mode=WAL;")
         c = conn.cursor()
+        
+        # 1. Buscar en la tabla persistente price_drafts
+        try:
+            c.execute("CREATE TABLE IF NOT EXISTS price_drafts (token TEXT PRIMARY KEY, phone TEXT, draft_prices TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+            c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (token,))
+            row = c.fetchone()
+            if row and row[0]:
+                data = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                return data
+        except Exception as pe:
+            logging.warning(f"Aviso consultando price_drafts: {pe}")
+
+        # 2. Fallback: buscar en user_sessions por compatibilidad
         c.execute("SELECT temp_data FROM user_sessions WHERE temp_data LIKE ?", (f'%"{token}"%',))
         rows = c.fetchall()
         for row in rows:

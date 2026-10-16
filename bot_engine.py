@@ -286,6 +286,31 @@ def procesar_borrador_lista_precios(wa_id, parsed_data, nombre):
     }
     set_user_state(wa_id, CONFIRM_PRICE_LIST_DRAFT, temp_data)
 
+    # Persistir en tabla price_drafts para preservar histórico de tokens
+    conn = None
+    try:
+        conn = sqlite3.connect(get_db_path(), timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS price_drafts (
+                token TEXT PRIMARY KEY,
+                phone TEXT,
+                draft_prices TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        c.execute("""
+            INSERT OR REPLACE INTO price_drafts (token, phone, draft_prices)
+            VALUES (?, ?, ?)
+        """, (draft_token, wa_id, json.dumps(parsed_data)))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error guardando price_draft en SQLite: {e}")
+    finally:
+        if conn:
+            conn.close()
+
     count = len(parsed_data.get("items", []))
     ejemplos_lines = []
     for it in parsed_data.get("items", [])[:3]:
