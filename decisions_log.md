@@ -144,6 +144,8 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
      - Confirma la eliminación por WhatsApp con el enlace de la web actualizada y redirige al menú de edición.
      - Si el usuario no tenía lista publicada, informa que no existía ninguna lista previa sin realizar escrituras innecesarias en base de datos.
   3. Se actualizó la suite `scripts/utils/test_price_list_backend.py` incorporando el Test 7 de eliminación y adaptación de menú (100% PASS).
-- **Razón:** Permitir a los clientes despublicar listas de precios o promociones vencidas de forma autónoma desde WhatsApp sin requerir asistencia manual de soporte técnico.
-- **Impacto:** Autonomía 100% para el ciclo de vida completo de la lista de precios (crear, previsualizar, publicar, actualizar y eliminar).
+  4. En `app.py`, se implementó la tabla SQLite `price_drafts` para persistir el historial de borradores generados por el bot, garantizando que los enlaces de vista previa (`/precios?preview=TOKEN`) se mantengan accesibles incluso si la sesión del usuario en `user_sessions` cambia de estado antes de la confirmación.
+  5. En `templates/client_template.html`, se corrigió la declaración del buscador y se optimizó el selector táctil de pestañas para mobile (`tabPills`), permitiendo alternar fluidamente entre métodos de pago y recalculando el mensaje preformateado de WhatsApp en tiempo real.
+- **Razón:** Permitir a los clientes despublicar listas de precios o promociones vencidas de forma autónoma desde WhatsApp sin requerir asistencia manual de soporte técnico, asegurando robustez en las vistas previas y una experiencia táctil impecable en celulares.
+- **Impacto:** Autonomía 100% para el ciclo de vida completo de la lista de precios (crear, previsualizar, publicar, actualizar y eliminar) con UX móvil optimizada.
 

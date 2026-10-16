@@ -226,6 +226,8 @@ TuWebLista/
 | `marketing_settings` | `app.initialize_db()` | Prompt, hashtags y lineamientos visuales (fila `id=1`) |
 | `transfers` | `bot_engine` (lazy) | Códigos `mudanza-XXXX` para transferir la titularidad de una web |
 | `upsell_logs` | `upsell_cron.py` | Webs a las que ya se envió el mensaje de upsell |
+| `user_sessions` | `bot_engine` (persistencia) | FSM del bot: `phone`, `estado`, `temp_data`, `updated_at` |
+| `price_drafts` | `bot_engine` / `app.py` | Historial de tokens de borrador y datos para vista previa (`/precios?preview=TOKEN`) |
 
 La ruta es `os.path.join(os.getcwd(), "messages.db")` → **depende del working directory** (en el VPS, `directory=/var/www/tuwebfacil` de Supervisor).
 
