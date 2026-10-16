@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""
+Test Suite: Frontend de Lista de Precios & Servicios (client_template.html)
+Verifica:
+1. Renderizado sin lista_precios (retrocompatibilidad 100%, sin errores ni sección #precios).
+2. Renderizado con lista_precios completa (sección #precios, encabezados, buscador en vivo, tabla desktop y tarjetas/pestañas mobile).
+3. Renderizado con is_preview=True (banner destacado de borrador con texto exacto).
+4. Verificación de enlaces preformateados de WhatsApp: teléfono limpio y texto codificado correctamente con urlencode.
+"""
+
+import os
+import sys
+import re
+import urllib.parse
+import jinja2
+
+# Ajustar PYTHONPATH
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, PROJECT_ROOT)
+
+from app import app, format_phone
+
+
+def get_jinja_template():
+    """Obtiene el template client_template.html desde el entorno de Flask o Jinja2 directo."""
+    try:
+        return app.jinja_env.get_template('client_template.html')
+    except Exception:
+        loader = jinja2.FileSystemLoader(os.path.join(PROJECT_ROOT, 'templates'))
+        env = jinja2.Environment(loader=loader, autoescape=True)
+        env.filters['format_phone'] = format_phone
+        return env.get_template('client_template.html')
+
+
+def build_base_context():
+    """Genera un contexto base válido sin lista_precios."""
+    return {
+        "web_content": {
+            "titulo_web": "Centro de Estética Lumière",
+            "subtitulo": "Tratamientos corporales y faciales de avanzada",
+            "paleta_colores": {"primario": "#4F46E5", "secundario": "#7C3AED"},
+            "servicios_sugeridos": ["Depilación Láser", "Limpieza Facial", "Masajes Reductores"],
+            "descripciones_servicios": [
+                "Tecnología definitiva indolora.",
+                "Higiene profunda y renovación celular.",
+                "Modelación y drenaje linfático."
+            ],
+            "fotos_servicios": [
+                "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881",
+                "https://images.unsplash.com/photo-1512290900672-1f41d9c1a5b8",
+                "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b"
+            ],
+            "foto_hero": "https://images.unsplash.com/photo-1521791136364-798a7bc0d26e",
+            "horario": "Lunes a Viernes 09:00 a 19:00",
+            "ubicacion_detectada": "Palermo, Ciudad Autónoma de Buenos Aires",
+            "whatsapp_contacto": "+54 9 11 3471-0787",
+            "email_contacto": "contacto@lumiere.com.ar",
+            "instagram": "estetica.lumiere",
+            "mapa": {"lat": -34.588, "lon": -58.430, "zoom": 15}
+        },
+        "client": {"phone": "5491134710787"},
+        "web_status": "published",
+        "has_edits": True,
+        "is_preview": False,
+        "bot_phone": "5491134710787"
+    }
+
+
+def build_sample_price_list():
+    """Genera una estructura representativa de lista_precios (Soteria 3 modalidades)."""
+    return {
+        "titulo": "Lista de Precios Oficial",
+        "columnas_pago": ["Efectivo", "Transferencia", "Tarjeta"],
+        "items": [
+            {
+                "servicio": "Abdomen",
+                "precios": {
+                    "efectivo": "$48.089,77",
+                    "transferencia": "$55.303,24",
+                    "tarjeta": "$63.478,50"
+                }
+            },
+            {
+                "servicio": "Axilas",
+                "precios": {
+                    "efectivo": "$25.000",
+                    "transferencia": "$28.750",
+                    "tarjeta": "$33.000"
+                }
+            },
+            {
+                "servicio": "Rostro Completo",
+                "precios": {
+                    "efectivo": "$30.500,50",
+                    "transferencia": "$35.075,58",
+                    "tarjeta": "$40.260,66"
+                }
+            }
+        ]
+    }
+
+
+def run_tests():
+    print("=" * 75)
+    print("🚀 INICIANDO TEST SUITE: LISTA DE PRECIOS & SERVICIOS (FRONTEND UX)")
+    print("=" * 75)
+
+    template = get_jinja_template()
+    assert template is not None, "Error al cargar templates/client_template.html"
+    print("  ✅ Template client_template.html cargado con éxito en Jinja2.")
+
+    # -------------------------------------------------------------------------
+    # TEST 1: Renderizado sin lista_precios (Retrocompatibilidad)
+    # -------------------------------------------------------------------------
+    print("\n[TEST 1] Verificando retrocompatibilidad cuando NO hay lista_precios...")
+    ctx_empty = build_base_context()
+    html_empty = template.render(**ctx_empty)
+
+    assert '<section id="precios"' not in html_empty, "El contenedor #precios no debe renderizarse si no hay lista_precios"
+    assert 'id="price-search-input"' not in html_empty, "El buscador no debe aparecer si no hay lista_precios"
+    assert 'id="price-pills-container"' not in html_empty, "Las pestañas táctiles no deben aparecer si no hay lista_precios"
+    assert 'VISTA PREVIA (Borrador sin publicar)' not in html_empty, "No debe mostrar banner de borrador si is_preview=False"
+    assert 'Nuestros Servicios' in html_empty, "Debe renderizar la sección de servicios original normalmente"
+    assert 'Depilación Láser' in html_empty, "Debe renderizar los servicios sugeridos estándar"
+    print("  ✅ Retrocompatibilidad perfecta: el template se renderiza idéntico a hoy sin errores Jinja.")
+
+    # -------------------------------------------------------------------------
+    # TEST 2: Renderizado con lista_precios completa (Responsive & Buscador)
+    # -------------------------------------------------------------------------
+    print("\n[TEST 2] Verificando renderizado completo de la Lista de Precios...")
+    ctx_full = build_base_context()
+    ctx_full["web_content"]["lista_precios"] = build_sample_price_list()
+    html_full = template.render(**ctx_full)
+
+    # 2.A: Contenedor y Encabezados
+    assert 'id="precios"' in html_full, "Debe contener el elemento <section id='precios'>"
+    assert 'Lista de Precios Oficial' in html_full, "Debe mostrar el título de la lista de precios"
+    assert 'Consultá nuestros tratamientos y reservá tu turno por WhatsApp.' in html_full, "Debe mostrar el subtítulo oficial"
+
+    # 2.B: Buscador en tiempo real
+    assert 'id="price-search-input"' in html_full, "Debe incluir el input del buscador con id='price-search-input'"
+    assert 'placeholder="Buscar tratamiento o servicio..."' in html_full, "Debe incluir el placeholder esperado"
+    assert 'id="price-search-clear"' in html_full, "Debe incluir el botón de limpiar búsqueda"
+    assert 'id="price-no-results"' in html_full, "Debe incluir el contenedor de mensaje amigable cuando no hay resultados"
+
+    # 2.C: Tabla de Computadora / Tablet (hidden md:block)
+    assert 'id="desktop-price-table-wrapper"' in html_full, "Debe incluir el contenedor desktop de la tabla"
+    assert 'hidden md:block' in html_full, "La vista de computadora debe tener clase responsive 'hidden md:block'"
+    assert 'Tratamiento / Servicio' in html_full, "La cabecera de la tabla debe contener 'Tratamiento / Servicio'"
+    assert 'Acción' in html_full, "La cabecera de la tabla debe contener la columna 'Acción'"
+    for col in ["Efectivo", "Transferencia", "Tarjeta"]:
+        assert f'<th scope="col" class="py-5 px-6 text-center">{col}</th>' in html_full, f"La cabecera debe contener la columna '{col}'"
+
+    # 2.D: Filas y Datos de los Servicios en Desktop
+    for item in ctx_full["web_content"]["lista_precios"]["items"]:
+        srv = item["servicio"]
+        assert srv in html_full, f"El servicio '{srv}' debe figurar en el HTML"
+        for p in item["precios"].values():
+            assert p in html_full, f"El precio '{p}' de '{srv}' debe figurar en el HTML"
+
+    # 2.E: Celular (block md:hidden) - Selector de Pestañas / Pills
+    assert 'id="mobile-price-section"' in html_full, "Debe incluir la sección mobile con id='mobile-price-section'"
+    assert 'block md:hidden' in html_full, "La vista celular debe tener clase responsive 'block md:hidden'"
+    assert 'price-tab-pill' in html_full, "Debe contener botones con clase 'price-tab-pill'"
+    assert '💵' in html_full, "Pestaña Efectivo debe tener emoji representativo 💵"
+    assert '📲' in html_full, "Pestaña Transferencia debe tener emoji representativo 📲"
+    assert '💳' in html_full, "Pestaña Tarjeta debe tener emoji representativo 💳"
+
+    # 2.F: Tarjetas Compactas Mobile
+    assert 'price-item-card' in html_full, "Debe contener tarjetas con clase 'price-item-card'"
+    assert 'price-value' in html_full, "Debe contener valor de precio destacado con clase 'price-value'"
+    assert 'price-method-badge' in html_full, "Debe contener badge del método activo 'price-method-badge'"
+    print("  ✅ Contenedor #precios, buscador en vivo, tabla desktop y pestañas táctiles mobile verificados.")
+
+    # -------------------------------------------------------------------------
+    # TEST 3: Renderizado con is_preview=True (Banner de Borrador)
+    # -------------------------------------------------------------------------
+    print("\n[TEST 3] Verificando modo Vista Previa (is_preview=True vs False)...")
+    ctx_preview = build_base_context()
+    ctx_preview["web_content"]["lista_precios"] = build_sample_price_list()
+    ctx_preview["is_preview"] = True
+
+    html_preview = template.render(**ctx_preview)
+    expected_banner_text = "🔍 VISTA PREVIA (Borrador sin publicar) — Los cambios aún no son públicos. Revisá tus precios y confirmá en WhatsApp."
+    assert expected_banner_text in html_preview, "Debe contener exactamente el texto del banner de vista previa"
+    assert "bg-amber-500" in html_preview or "bg-amber" in html_preview, "El banner debe tener color de alerta/ámbar visible"
+
+    # Comprobar que con is_preview=False desaparece
+    ctx_preview["is_preview"] = False
+    html_no_preview = template.render(**ctx_preview)
+    assert expected_banner_text not in html_no_preview, "No debe contener el banner de vista previa si is_preview=False"
+    print("  ✅ Banner superior de vista previa verificado con éxito (activación y desactivación).")
+
+    # -------------------------------------------------------------------------
+    # TEST 4: Verificación de Enlaces Preformateados de WhatsApp & urlencode
+    # -------------------------------------------------------------------------
+    print("\n[TEST 4] Verificando links preformateados de WhatsApp y codificación urlencode...")
+    ctx_wa = build_base_context()
+    ctx_wa["web_content"]["titulo_web"] = "Estética & Spa Lumière"
+    ctx_wa["web_content"]["whatsapp_contacto"] = "+54 9 11 3471-0787"
+    ctx_wa["web_content"]["lista_precios"] = build_sample_price_list()
+
+    html_wa = template.render(**ctx_wa)
+
+    # Extraer todos los links de wa.me en la sección #precios
+    wa_links = re.findall(r'href="(https://wa\.me/[^"]+)"', html_wa)
+    assert len(wa_links) > 0, "Debe haber enlaces a wa.me en el template"
+
+    # Filtrar solo los links de turnos de la lista de precios (contienen 'reservar%20un%20turno' o 'reservar+un+turno')
+    price_wa_links = [
+        link for link in wa_links 
+        if "reservar" in link and "turno" in link
+    ]
+    assert len(price_wa_links) >= 6, f"Esperados al menos 6 links (3 desktop + 3 mobile), obtenidos: {len(price_wa_links)}"
+
+    expected_phone = "5491134710787"
+    for link in price_wa_links:
+        # 1. El link debe apuntar al teléfono limpio (sin +, sin espacios, sin guiones)
+        parsed_url = urllib.parse.urlparse(link)
+        assert parsed_url.netloc == "wa.me", f"El host debe ser wa.me: {link}"
+        phone_in_url = parsed_url.path.strip("/")
+        assert phone_in_url == expected_phone, f"Teléfono en URL '{phone_in_url}' != esperado '{expected_phone}'"
+
+        # 2. El parámetro 'text' debe existir y estar codificado
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        assert "text" in query_params, f"El enlace no contiene el parámetro 'text': {link}"
+
+        # 3. Al decodificar 'text', debe cumplir el formato:
+        # Hola {titulo_web}! Quiero consultar disponibilidad para reservar un turno de: {servicio} ({metodo}: {precio})
+        raw_text_decoded = query_params["text"][0]
+        assert raw_text_decoded.startswith("Hola Estética & Spa Lumière! Quiero consultar disponibilidad para reservar un turno de: "), \
+            f"El texto inicial de WhatsApp no coincide: {raw_text_decoded}"
+        assert "(Efectivo: " in raw_text_decoded, f"Debe incluir el método y precio inicial: {raw_text_decoded}"
+        assert raw_text_decoded.endswith(")"), f"El mensaje debe cerrar con paréntesis: {raw_text_decoded}"
+
+        # 4. Asegurar que no hay caracteres de espacio sin codificar en el enlace href
+        assert " " not in link, f"El enlace href contiene espacios sin codificar: {link}"
+
+    # 4.B: Probar fallback a client.phone si whatsapp_contacto es None o vacío
+    ctx_fallback = build_base_context()
+    ctx_fallback["web_content"]["whatsapp_contacto"] = ""
+    ctx_fallback["client"]["phone"] = "+54 9 11 9988-7766"
+    ctx_fallback["web_content"]["lista_precios"] = build_sample_price_list()
+    html_fallback = template.render(**ctx_fallback)
+
+    assert "https://wa.me/5491199887766?" in html_fallback, "Debe tomar client.phone sanitizado si whatsapp_contacto está vacío"
+    print("  ✅ Enlaces wa.me verificados: teléfono normalizado, query params 100% conformes al contrato y urlencode válido.")
+
+    # -------------------------------------------------------------------------
+    # TEST 5: Scroll Automático a #precios en JavaScript
+    # -------------------------------------------------------------------------
+    print("\n[TEST 5] Verificando script de scroll automático a #precios...")
+    assert "window.location.hash === '#precios'" in html_full, "El script debe detectar #precios en el hash"
+    assert "window.location.pathname.endsWith('/precios')" in html_full, "El script debe detectar /precios en el pathname"
+    assert "scrollIntoView({ behavior: 'smooth' })" in html_full, "El script debe invocar scrollIntoView con 'smooth'"
+    print("  ✅ Lógica de scroll automático detectada en el bundle de JavaScript del template.")
+
+    print("\n" + "=" * 75)
+    print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1 PASARON CON ÉXITO (100% PASS)")
+    print("=" * 75)
+
+
+if __name__ == "__main__":
+    run_tests()

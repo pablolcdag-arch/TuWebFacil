@@ -40,6 +40,10 @@ def handle_messages():
             elif msg_type == 'image':
                 texto = "" # Para audios, imagenes, etc.
                 media_id = mensaje_obj.get('image', {}).get('id')
+            elif msg_type == 'document':
+                doc_obj = mensaje_obj.get('document', {})
+                media_id = doc_obj.get('id')
+                texto = doc_obj.get('filename', '')
             elif msg_type == 'interactive':
                 inter_obj = mensaje_obj.get('interactive', {})
                 if inter_obj.get('type') == 'button_reply':

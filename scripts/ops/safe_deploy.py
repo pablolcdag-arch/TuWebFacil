@@ -49,6 +49,7 @@ ALLOWED_DIRS = [
     ("templates", "templates"),
     ("static/img", "static/img"),
     ("scripts/ops", "scripts/ops"),
+    ("scripts/utils/price_list_parser.py", "scripts/utils/price_list_parser.py"),
     ("scripts/onboarding_cron.py", "scripts/onboarding_cron.py"),
 ]
 
@@ -137,6 +138,16 @@ def deploy():
                     sftp.put(full_local, full_remote)
 
     sftp.close()
+
+    # 2.5 Instalar/actualizar dependencias en el VPS
+    print("\n📦 Verificando dependencias en VPS...")
+    cmd_pip = f"cd {REMOTE_DIR} && pip install -r requirements.txt --quiet"
+    stdin, stdout, stderr = ssh.exec_command(cmd_pip)
+    pip_err = stderr.read().decode().strip()
+    if pip_err and "WARNING" not in pip_err:
+        print(f"  ⚠️ Stderr pip: {pip_err}")
+    else:
+        print("  ✅ Dependencias verificadas con éxito.")
 
     # 3. Reiniciar de forma QUIRÚRGICA solo TuWebLista (NUNCA RESTART ALL)
     print("\n🔄 Reiniciando procesos de TuWebLista en Supervisor...")

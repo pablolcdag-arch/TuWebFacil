@@ -118,5 +118,19 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** Proveer un cierre elegante al ciclo de prueba de 30 días, protegiendo los datos del usuario durante 15 días y habilitando un canal directo de reactivación por WhatsApp sin fricciones.
 - **Impacto:** Ciclo de vida del cliente (Día 0 Demo -> Día 27 Aviso interactivo -> Día 30 Pausado -> Reactivación) 100% automatizado y en producción.
 
-
-
+## [16/10/2026] — Implementación de Lista de Precios & Servicios Interactiva (Etapa 1 — Estilo Soteria)
+- **Decisión:**
+  1. Se implementó el motor de ingesta inteligente en `scripts/utils/price_list_parser.py`, capaz de parsear archivos tabulares (.xlsx, .xls, .csv, .tsv), documentos PDF (.pdf) y texto plano libre con detección heurística de columnas (Servicio, Efectivo, Transferencia, Tarjeta, etc.) y normalización automática de moneda argentina (`format_price()`).
+  2. En `bot_engine.py`, se incorporó la opción "📋 Lista de Precios" (`EDIT_PRECIOS`) en `EDIT_MENU` (manteniendo exactamente 10 opciones interactivas para Meta) y los nuevos estados `WAITING_FOR_PRICE_LIST` y `CONFIRM_PRICE_LIST_DRAFT`.
+  3. Se diseñó el flujo de seguridad con **Vista Previa de Borrador**: antes de publicar, el bot genera un token seguro (`secrets.token_hex(4)`), almacena el borrador temporalmente en `user_sessions.temp_data` (SQLite WAL) y envía un enlace de preview (`?preview=TOKEN`) con 2 botones de respuesta rápida ("✅ Publicar Precios" [18 chars] y "❌ Cancelar" [10 chars], ambos $\le 20$ caracteres).
+  4. En `app.py`, se habilitó la ruta `/precios` y el overlay seguro en memoria para renderizar el borrador con `is_preview=True` sin tocar Supabase hasta la confirmación explícita del cliente.
+  5. En `templates/client_template.html`, se construyó la sección `#precios` con diseño 100% responsive:
+     - Desktop: tabla completa con bordes suaves, columnas de pago dinámicas y botón WhatsApp.
+     - Mobile: selector de pestañas táctiles (`[ 💵 Efectivo ] [ 📲 Transferencia ] [ 💳 Tarjeta ]`), tarjetas compactas sin scroll horizontal y actualización reactiva de precios.
+     - Buscador instantáneo Vanilla JS tolerante a mayúsculas y acentos (`normalize("NFD")`).
+     - Banner de borrador superior ámbar destacado (`is_preview=True`).
+     - Botón de reserva de turnos directo a WhatsApp con mensaje preformateado y codificado (`urlencode`).
+  6. Se actualizaron `requirements.txt` (`openpyxl`, `pypdf`) y `scripts/ops/safe_deploy.py` para sincronizar `price_list_parser.py` e instalar dependencias en el VPS de forma automatizada.
+  7. Se crearon las suites de pruebas automatizadas `scripts/utils/test_price_list_backend.py` y `scripts/utils/test_price_list_frontend.py`, auditadas y aprobadas al 100% por los verificadores QA, certificando cero regresiones en los flujos preexistentes.
+- **Razón:** Permitir que profesionales y comercios de servicios (centros de estética, peluquerías, talleres, consultorios) publiquen listas de precios con múltiples modalidades de pago gestionadas íntegramente por WhatsApp y con control previo antes de salir al público.
+- **Impacto:** Apertura del segmento de profesionales y centros de estética (arquetipo Soteria), potenciando la conversión de visitantes web a turnos agendados por WhatsApp.

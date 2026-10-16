@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""
+Test Suite: Ingesta de Listas de Precios y Servicios (Backend)
+Verifica:
+1. Normalización de monedas argentinas (format_price)
+2. Ingesta tabular (CSV y Excel con 3 columnas de pago: Efectivo, Transferencia, Tarjeta)
+3. Ingesta de texto plano y fallback
+4. Bot FSM: transición a WAITING_FOR_PRICE_LIST, generación de draft con token seguro y botones <= 20 chars
+5. Bot FSM: confirmación (actualiza website_content, incrementa versión) y cancelación (descarta borrador)
+6. Flask app.py: overlay de borrador vía /precios?preview=TOKEN
+7. Conexiones SQLite sin fugas ni bloqueos
+"""
+
+import os
+import sys
+import json
+import sqlite3
+import tempfile
+import pandas as pd
+from unittest.mock import patch, MagicMock
+
+# Ajustar PYTHONPATH
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from scripts.utils.price_list_parser import format_price, parse_price_list, parse_tabular_data
+import bot_engine
+import app as flask_app
+
+
+def run_tests():
+    print("=" * 70)
+    print("🚀 INICIANDO TEST SUITE: LISTAS DE PRECIOS & SERVICIOS (BACKEND)")
+    print("=" * 70)
+
+    # ---------------------------------------------------------
+    # TEST 1: Normalización de Moneda Argentina (format_price)
+    # ---------------------------------------------------------
+    print("\n[TEST 1] Verificando formateador de moneda argentina...")
+    test_cases = [
+        (48089.77, "$48.089,77"),
+        (15000, "$15.000"),
+        ("15000", "$15.000"),
+        ("48089.77", "$48.089,77"),
+        ("48.089,77", "$48.089,77"),
+        ("$55.303,24", "$55.303,24"),
+        (None, "-"),
+        ("-", "-"),
+        ("", "-")
+    ]
+    for val, expected in test_cases:
+        res = format_price(val)
+        assert res == expected, f"Fallo format_price({val}): esperado '{expected}', obtenido '{res}'"
+    print("  ✅ format_price() normaliza enteros, flotantes y strings con formato argentino.")
+
+    # ---------------------------------------------------------
+    # TEST 2: Ingesta Tabular CSV & Excel (Soteria 3 columnas)
+    # ---------------------------------------------------------
+    print("\n[TEST 2] Verificando parse_tabular_data con CSV y Excel (3 modalidades)...")
+    data_soteria = {
+        "Servicio": ["Abdomen", "Axilas", "Rostro"],
+        "Efectivo": [48089.77, 25000, 30500.50],
+        "Transferencia": [55303.24, 28750, 35075.58],
+        "Tarjeta": [63478.50, 33000, 40260.66]
+    }
+    df = pd.DataFrame(data_soteria)
+    parsed = parse_tabular_data(df, "Soteria Soprano")
+
+    assert parsed["titulo"] == "Soteria Soprano"
+    assert len(parsed["columnas_pago"]) == 3
+    assert len(parsed["items"]) == 3
+    
+    first_item = parsed["items"][0]
+    assert first_item["servicio"] == "Abdomen"
+    assert first_item["precios"]["efectivo"] == "$48.089,77"
+    assert first_item["precios"]["transferencia"] == "$55.303,24"
+    assert first_item["precios"]["tarjeta"] == "$63.478,50"
+
+    # Probar archivo CSV físico
+    with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as tf:
+        df.to_csv(tf.name, index=False)
+        csv_path = tf.name
+
+    try:
+        parsed_csv = parse_price_list(csv_path)
+        assert len(parsed_csv["items"]) == 3
+        assert parsed_csv["items"][1]["servicio"] == "Axilas"
+        assert parsed_csv["items"][1]["precios"]["efectivo"] == "$25.000"
+    finally:
+        if os.path.exists(csv_path):
+            os.remove(csv_path)
+
+    # Probar archivo Excel físico (.xlsx)
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tf:
+        xlsx_path = tf.name
+    df.to_excel(xlsx_path, index=False)
+
+    try:
+        parsed_xlsx = parse_price_list(xlsx_path)
+        assert len(parsed_xlsx["items"]) == 3
+        assert parsed_xlsx["items"][2]["servicio"] == "Rostro"
+        assert parsed_xlsx["items"][2]["precios"]["tarjeta"] == "$40.260,66"
+    finally:
+        if os.path.exists(xlsx_path):
+            os.remove(xlsx_path)
+
+    print("  ✅ Ingesta CSV y Excel procesada con contrato JSON exacto y claves normalizadas.")
+
+    # ---------------------------------------------------------
+    # TEST 3: Ingesta de Texto Plano (Fallback Regex)
+    # ---------------------------------------------------------
+    print("\n[TEST 3] Verificando parse_price_list con texto plano...")
+    raw_text = """Corte clásico: $15.000
+Barba completa: $8.000
+Corte y barba: $20.000"""
+
+    with patch.dict(os.environ, {"GEMINI_API_KEY": ""}):
+        parsed_text = parse_price_list(raw_text, is_text=True)
+        assert len(parsed_text["items"]) == 3
+        assert parsed_text["items"][0]["servicio"] == "Corte clásico"
+        assert parsed_text["items"][0]["precios"]["precio"] == "$15.000"
+    print("  ✅ Texto plano parseado correctamente con fallback determinista.")
+
+    # ---------------------------------------------------------
+    # TEST 4: Bot WhatsApp FSM - Menú y Transición a WAITING_FOR_PRICE_LIST
+    # ---------------------------------------------------------
+    print("\n[TEST 4] Verificando Bot FSM: acceso a EDIT_PRECIOS...")
+    test_wa = "5491199990001"
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
+        
+        # Verificar estado
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PRICE_LIST, f"Estado incorrecto: {state['estado']}"
+        mock_send_msg.assert_called_once()
+        msg_text = mock_send_msg.call_args[0][1]
+        assert "Actualización de Lista de Precios" in msg_text
+    print("  ✅ EDIT_MENU -> EDIT_PRECIOS transiciona a WAITING_FOR_PRICE_LIST.")
+
+    # ---------------------------------------------------------
+    # TEST 5: Bot WhatsApp FSM - Generación de Borrador y Botones <= 20 chars
+    # ---------------------------------------------------------
+    print("\n[TEST 5] Verificando generación de borrador, draft_token y botones <= 20 chars...")
+    with patch("bot_engine.send_whatsapp_message"), \
+         patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
+         patch("bot_engine.obtener_web_del_cliente", return_value={"slug": "estetica-sol", "custom_domain": None, "id": "w1"}):
+
+        # Usuario en WAITING_FOR_PRICE_LIST envía texto con precios
+        bot_engine.procesar_mensaje(test_wa, "Manicura: $12.000\nPedicura: $14.000", "Tester")
+
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.CONFIRM_PRICE_LIST_DRAFT
+        temp_data = state["temp_data"]
+        assert "draft_token" in temp_data
+        assert len(temp_data["draft_token"]) == 8, f"Token debe ser de 8 caracteres hex: {temp_data['draft_token']}"
+        assert "draft_prices" in temp_data
+        assert len(temp_data["draft_prices"]["items"]) == 2
+
+        # Verificar botones enviados
+        mock_buttons.assert_called_once()
+        btn_args = mock_buttons.call_args[0]
+        buttons_sent = btn_args[2]
+        assert len(buttons_sent) == 2
+        for b in buttons_sent:
+            assert len(b["title"]) <= 20, f"Botón '{b['title']}' supera los 20 caracteres permitidos por Meta: {len(b['title'])}"
+        
+        # Verificar que el preview_url contiene el token
+        body_text = btn_args[1]
+        expected_url = f"https://estetica-sol.tuweblista.com.ar/precios?preview={temp_data['draft_token']}"
+        assert expected_url in body_text, f"URL de vista previa no encontrada en mensaje: {body_text}"
+
+    print("  ✅ Borrador generado con token seguro de 8 caracteres y botones estrictamente <= 20 chars.")
+
+    # ---------------------------------------------------------
+    # TEST 6: Bot WhatsApp FSM - Publicar vs Cancelar Borrador
+    # ---------------------------------------------------------
+    print("\n[TEST 6] Verificando confirmación (publicación) y cancelación del borrador...")
+    
+    # 6A: Cancelar
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.actualizar_web_content") as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value={"slug": "estetica-sol", "version_id": "v1", "content": {}}):
+        
+        # Cancelar con botón CONFIRM_PRICES_CANCEL
+        bot_engine.procesar_mensaje(test_wa, "confirm_prices_cancel", "Tester")
+        mock_update.assert_not_called()
+        state = bot_engine.get_user_state(test_wa)
+        # Debe haber reseteado o limpiado el estado
+        assert state["estado"] in [bot_engine.IDLE, bot_engine.MAIN_MENU]
+    print("  ✅ Cancelar borrador descarta cambios sin tocar website_content.")
+
+    # 6B: Confirmar y Publicar
+    # Reestablecer borrador
+    token_prueba = "a1b2c3d4"
+    draft_test_prices = {
+        "titulo": "Lista Test",
+        "columnas_pago": ["Precio"],
+        "items": [{"servicio": "Corte", "precios": {"precio": "$15.000"}}]
+    }
+    bot_engine.set_user_state(test_wa, bot_engine.CONFIRM_PRICE_LIST_DRAFT, {
+        "draft_token": token_prueba,
+        "draft_prices": draft_test_prices
+    })
+
+    fake_web = {
+        "website_id": "w123",
+        "version_id": "v123",
+        "content": {"titulo_web": "Barberia Pro"},
+        "slug": "barberia-pro",
+        "custom_domain": None
+    }
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=fake_web):
+
+        bot_engine.procesar_mensaje(test_wa, "confirm_prices_ok", "Tester")
+
+        mock_update.assert_called_once()
+        call_version_id, call_content = mock_update.call_args[0]
+        assert call_version_id == "v123"
+        assert "lista_precios" in call_content
+        assert call_content["lista_precios"] == draft_test_prices
+
+        # Verificar que la sesión fue limpiada
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.IDLE
+
+        # Mensaje de éxito con link /precios
+        assert mock_send_msg.called
+        success_msg = mock_send_msg.call_args[0][1]
+        assert "https://barberia-pro.tuweblista.com.ar/precios" in success_msg
+
+    print("  ✅ Confirmar publicación escribe en website_content, limpia sesión y envía link oficial.")
+
+    # ---------------------------------------------------------
+    # TEST 7: Flask app.py - Vista Previa Temporal con ?preview=TOKEN
+    # ---------------------------------------------------------
+    print("\n[TEST 7] Verificando ruta /precios y overlay de borrador en Flask...")
+    
+    # Inyectar una sesión con draft_token en messages.db
+    token_preview = "f9e8d7c6"
+    preview_prices = {
+        "titulo": "Precios Preview VIP",
+        "columnas_pago": ["Efectivo"],
+        "items": [{"servicio": "Tratamiento VIP", "precios": {"efectivo": "$99.999"}}]
+    }
+    bot_engine.set_user_state("5491188887777", bot_engine.CONFIRM_PRICE_LIST_DRAFT, {
+        "draft_token": token_preview,
+        "draft_prices": preview_prices
+    })
+
+    # Verificar función get_draft_prices_by_token en app.py
+    extracted_prices = flask_app.get_draft_prices_by_token(token_preview)
+    assert extracted_prices is not None, "get_draft_prices_by_token no encontró el draft con el token"
+    assert extracted_prices["items"][0]["servicio"] == "Tratamiento VIP"
+
+    # Probar llamada a client_website vía test_client de Flask
+    client = flask_app.app.test_client()
+    
+    # Mockear Supabase para responder con una web de prueba
+    mock_supabase = MagicMock()
+    mock_web_query = MagicMock()
+    mock_web_query.execute.return_value = MagicMock(data=[{"id": "w_test", "client_id": "c_test", "subdomain": "negocio-vip", "status": "published"}])
+
+    mock_content_query = MagicMock()
+    mock_content_query.eq.return_value = mock_content_query
+    mock_content_query.execute.return_value = MagicMock(data=[{"id": "cnt_test", "content": json.dumps({"titulo_web": "Negocio VIP"}), "version": 1}])
+
+    mock_client_query = MagicMock()
+    mock_client_query.execute.return_value = MagicMock(data=[{"id": "c_test", "phone": "5491188887777", "name": "VIP"}])
+
+    def mock_table(table_name):
+        mock_tbl = MagicMock()
+        mock_sel = MagicMock()
+        mock_tbl.select.return_value = mock_sel
+        if table_name == "websites":
+            mock_sel.eq.return_value = mock_web_query
+        elif table_name == "website_content":
+            mock_sel.eq.return_value = mock_content_query
+        elif table_name == "clients":
+            mock_sel.eq.return_value = mock_client_query
+        return mock_tbl
+
+    mock_supabase.table.side_effect = mock_table
+
+    with patch("app.supabase", mock_supabase), \
+         patch("app.render_template") as mock_render:
+        mock_render.return_value = "<html>OK</html>"
+        
+        response = client.get(
+            "/precios?preview=f9e8d7c6",
+            headers={"Host": "negocio-vip.tuweblista.com.ar"}
+        )
+
+        assert mock_render.called
+        render_kwargs = mock_render.call_args[1]
+        assert render_kwargs["is_preview"] is True, "is_preview debe ser True cuando se pasa ?preview=TOKEN válido"
+        assert render_kwargs["web_content"]["lista_precios"] == preview_prices, "web_content debe tener los precios del borrador"
+
+    print("  ✅ Flask overlay aplica draft_prices temporalmente y pasa is_preview=True.")
+
+    # ---------------------------------------------------------
+    # TEST 8: Auditoría SQLite - Cierre de conexiones y WAL
+    # ---------------------------------------------------------
+    print("\n[TEST 8] Verificando integridad y ausencia de locks en messages.db...")
+    db_path = bot_engine.get_db_path()
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, timeout=5)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode;")
+        journal_mode = cursor.fetchone()[0].lower()
+        assert journal_mode in ["wal", "memory"], f"Journal mode no es WAL: {journal_mode}"
+    finally:
+        if conn:
+            conn.close()
+
+    # Limpiar estado de prueba
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.clear_user_state("5491188887777")
+    print("  ✅ messages.db opera en modo WAL y sin locks abiertos.")
+
+    print("\n" + "=" * 70)
+    print("🎉 TODAS LAS PRUEBAS DE LA ETAPA 1 (BACKEND) PASARON CON ÉXITO (100% PASS)")
+    print("=" * 70)
+
+
+if __name__ == "__main__":
+    run_tests()

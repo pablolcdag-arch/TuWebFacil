@@ -2,9 +2,11 @@ import os
 import json
 import sqlite3
 import requests
+import secrets
 from dotenv import load_dotenv
 from supabase import create_client
 from sender import send_whatsapp_message, send_whatsapp_image, download_whatsapp_media, send_whatsapp_buttons, send_whatsapp_list
+from scripts.utils.price_list_parser import parse_price_list
 import logging
 import uuid
 from datetime import datetime
@@ -40,6 +42,8 @@ WAITING_FOR_WHATSAPP = "WAITING_FOR_WHATSAPP"
 WAITING_FOR_EMAIL = "WAITING_FOR_EMAIL"
 WAITING_FOR_INSTAGRAM = "WAITING_FOR_INSTAGRAM"
 WAITING_FOR_TRANSFER_PHONE = "WAITING_FOR_TRANSFER_PHONE"
+WAITING_FOR_PRICE_LIST = "WAITING_FOR_PRICE_LIST"
+CONFIRM_PRICE_LIST_DRAFT = "CONFIRM_PRICE_LIST_DRAFT"
 
 
 def get_db_path():
@@ -209,12 +213,13 @@ def obtener_web_del_cliente(phone):
         client_id = cli_res.data[0]["id"]
         
         # 2. Buscar su web (asumimos la más reciente)
-        web_res = supabase.table("websites").select("id, subdomain").eq("client_id", client_id).order("created_at", desc=True).limit(1).execute()
+        web_res = supabase.table("websites").select("id, subdomain, custom_domain").eq("client_id", client_id).order("created_at", desc=True).limit(1).execute()
         if not web_res.data:
             return None
             
         website_id = web_res.data[0]["id"]
         slug = web_res.data[0]["subdomain"]
+        custom_domain = web_res.data[0].get("custom_domain")
         
         # 3. Buscar la versión actual de la web
         ver_res = supabase.table("website_content").select("id, content").eq("website_id", website_id).execute()
@@ -224,7 +229,8 @@ def obtener_web_del_cliente(phone):
                 "website_id": website_id,
                 "version_id": ver_res.data[0]["id"],
                 "content": json.loads(ver_res.data[0]["content"]) if isinstance(ver_res.data[0]["content"], str) else ver_res.data[0]["content"],
-                "slug": slug
+                "slug": slug,
+                "custom_domain": custom_domain
             }
     except Exception as e:
         logging.error(f"Error al buscar web en BD: {e}")
@@ -271,15 +277,55 @@ def obtener_coordenadas(ubicacion_texto):
 def verificar_y_consumir_cuota(phone):
     return True, 999
 
-def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
+def procesar_borrador_lista_precios(wa_id, parsed_data, nombre):
+    """Genera borrador seguro de lista de precios con draft_token y envía vista previa."""
+    draft_token = secrets.token_hex(4)
+    temp_data = {
+        "draft_prices": parsed_data,
+        "draft_token": draft_token
+    }
+    set_user_state(wa_id, CONFIRM_PRICE_LIST_DRAFT, temp_data)
+
+    count = len(parsed_data.get("items", []))
+    ejemplos_lines = []
+    for it in parsed_data.get("items", [])[:3]:
+        srv = it.get("servicio", "Servicio")
+        prc_dict = it.get("precios", {})
+        prc_str = " / ".join([f"{k.capitalize()}: {v}" for k, v in prc_dict.items() if v and v != "-"])
+        if not prc_str:
+            prc_str = "-"
+        ejemplos_lines.append(f"• *{srv}*: {prc_str}")
+    ejemplos_txt = "\n".join(ejemplos_lines)
+
+    web_info = obtener_web_del_cliente(wa_id)
+    if web_info and web_info.get("custom_domain"):
+        preview_url = f"https://{web_info['custom_domain']}/precios?preview={draft_token}"
+    else:
+        slug = web_info["slug"] if web_info else "mi-web"
+        preview_url = f"https://{slug}.tuweblista.com.ar/precios?preview={draft_token}"
+
+    msg = (f"📋 *¡Borrador de Lista de Precios generado!*\n\n"
+           f"Detectamos *{count} servicios*:\n"
+           f"{ejemplos_txt}\n\n"
+           f"🔗 *Mirá cómo se ve tu lista acá:*\n"
+           f"{preview_url}\n\n"
+           f"¿Deseás publicarla ahora mismo en tu web?")
+
+    buttons = [
+        {"id": "CONFIRM_PRICES_OK", "title": "✅ Publicar Precios"},
+        {"id": "CONFIRM_PRICES_CANCEL", "title": "❌ Cancelar"}
+    ]
+    send_whatsapp_buttons(wa_id, msg, buttons)
+
+def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filename=None):
     """Función principal que enruta el mensaje según el estado actual."""
     print(f"DEBUG BOT: Mensaje recibido de {nombre} ({wa_id}): Tipo: {msg_type} - '{texto}'")
     
     user_session = get_user_state(wa_id)
     estado_actual = user_session["estado"]
     
-    if msg_type not in ["text", "interactive", "image"]:
-        send_whatsapp_message(wa_id, "Por favor, escribime por texto o enviame imágenes. Todavía no puedo escuchar audios. 😅")
+    if msg_type not in ["text", "interactive", "image", "document"]:
+        send_whatsapp_message(wa_id, "Por favor, escribime por texto o enviame archivos (Excel, CSV, PDF) o imágenes. Todavía no puedo escuchar audios. 😅")
         return
 
     texto_limpio = texto.strip().lower()
@@ -434,6 +480,36 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
         set_user_state(wa_id, MAIN_MENU, {})
         return
 
+    # === RECEPCIÓN DE DOCUMENTOS ===
+    if msg_type == "document":
+        if estado_actual == WAITING_FOR_PRICE_LIST:
+            doc_name = filename or texto or "precios.pdf"
+            ext = os.path.splitext(doc_name)[1].lower()
+            if not ext:
+                ext = ".pdf"
+            temp_filename = f"doc_{wa_id}_{uuid.uuid4().hex[:8]}{ext}"
+            temp_dir = os.path.join(os.getcwd(), "receipts")
+            os.makedirs(temp_dir, exist_ok=True)
+            save_path = os.path.join(temp_dir, temp_filename)
+            
+            send_whatsapp_message(wa_id, "⏳ Analizando tu documento y extrayendo los precios... aguardá unos segundos.")
+            if download_whatsapp_media(media_id, save_path):
+                try:
+                    parsed = parse_price_list(save_path, filename=doc_name)
+                    if parsed and parsed.get("items"):
+                        procesar_borrador_lista_precios(wa_id, parsed, nombre)
+                    else:
+                        send_whatsapp_message(wa_id, "⚠️ No pude detectar una lista de precios válida en el documento. Probá enviarlo en formato Excel, CSV o pegando el texto directamente.")
+                except Exception as e:
+                    logging.error(f"Error parseando documento de precios: {e}")
+                    send_whatsapp_message(wa_id, "❌ Hubo un error al procesar el archivo. Probá enviarlo en otro formato o pegar el texto.")
+            else:
+                send_whatsapp_message(wa_id, "❌ Hubo un error al descargar el archivo. Por favor intentá nuevamente.")
+            return
+        else:
+            send_whatsapp_message(wa_id, "📄 Recibimos tu documento. Si querías actualizar tu lista de precios, primero seleccioná *Lista de Precios* en el menú de edición.")
+            return
+
     # === RECEPCIÓN DE IMÁGENES ===
     if msg_type == "image":
         if estado_actual == WAITING_FOR_RECEIPT:
@@ -465,6 +541,26 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             
             logging.info(f"NUEVO PAGO: {nombre} ({wa_id}) mandó un comprobante.")
             send_whatsapp_message("5491134710787", f"💰 NUEVO PAGO DE {nombre} ({wa_id}). Revisá el servidor.")
+        elif estado_actual == WAITING_FOR_PRICE_LIST:
+            filename_img = f"price_img_{wa_id}_{uuid.uuid4().hex[:8]}.jpg"
+            temp_dir = os.path.join(os.getcwd(), "receipts")
+            os.makedirs(temp_dir, exist_ok=True)
+            save_path = os.path.join(temp_dir, filename_img)
+            
+            send_whatsapp_message(wa_id, "⏳ Procesando la foto de tus precios... aguardá unos segundos.")
+            if download_whatsapp_media(media_id, save_path):
+                try:
+                    parsed = parse_price_list(save_path, filename=filename_img)
+                    if parsed and parsed.get("items"):
+                        procesar_borrador_lista_precios(wa_id, parsed, nombre)
+                    else:
+                        send_whatsapp_message(wa_id, "⚠️ No pude detectar precios legibles en la imagen. Probá con una foto más nítida o pegando el texto.")
+                except Exception as e:
+                    logging.error(f"Error procesando imagen de precios: {e}")
+                    send_whatsapp_message(wa_id, "❌ Error al procesar la imagen de precios.")
+            else:
+                send_whatsapp_message(wa_id, "❌ Error al descargar la imagen.")
+            return
         else:
             # Es una foto para la web
             msg = "¡Recibimos tu imagen! 📸 ¿En qué parte de tu web querés ponerla?"
@@ -541,7 +637,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
             set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME)
             
         elif texto_limpio == "main_editar" or texto_limpio == "2":
-            msg = "✏️ *Menú de Edición*\n¿Qué parte de tu página web querés modificar?"
+            msg = "✏️ *Menú de Edición*\n¿Qué parte de tu página web querés modificar?\n\n💡 _Para volver al menú principal escribí *volver*_"
             options = [
                 {"id": "EDIT_TITULO", "title": "📝 Editar Título"},
                 {"id": "EDIT_SUBTITULO", "title": "📝 Editar Subtítulo"},
@@ -549,10 +645,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                 {"id": "EDIT_LOCATION", "title": "📍 Editar Ubicación"},
                 {"id": "EDIT_SCHEDULE", "title": "🕒 Editar Horarios"},
                 {"id": "EDIT_IMAGENES", "title": "🖼️ Editar Imágenes"},
+                {"id": "EDIT_PRECIOS", "title": "📋 Lista de Precios"},
                 {"id": "EDIT_WHATSAPP", "title": "💬 Editar WhatsApp"},
                 {"id": "EDIT_EMAIL", "title": "✉️ Editar Email"},
-                {"id": "EDIT_INSTAGRAM", "title": "📷 Editar Instagram"},
-                {"id": "EDIT_VOLVER", "title": "⬅️ Volver"}
+                {"id": "EDIT_INSTAGRAM", "title": "📷 Editar Instagram"}
             ]
             send_whatsapp_list(wa_id, msg, "Elegir Sección", options, "Edición de Web")
             set_user_state(wa_id, EDIT_MENU)
@@ -603,6 +699,17 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
                    "Simplemente *enviame la foto por este chat ahora mismo* y te preguntaremos dónde querés ubicarla.")
             send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, IDLE, {})
+        elif texto_limpio in ["edit_precios", "precios", "lista de precios", "7"]:
+            msg = ("📋 *Actualización de Lista de Precios*\n\n"
+                   "Podés enviarme:\n"
+                   "1️⃣ Un archivo Excel (.xlsx) o CSV.\n"
+                   "2️⃣ Un archivo PDF con tus precios.\n"
+                   "3️⃣ Una foto nítida de tu lista o pizarra de precios.\n"
+                   "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
+                   "¿Cómo preferís enviármela?\n\n"
+                   "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
+            send_whatsapp_message(wa_id, msg)
+            set_user_state(wa_id, WAITING_FOR_PRICE_LIST)
         elif texto_limpio == "edit_whatsapp":
             send_whatsapp_message(wa_id, "Escribí el número de WhatsApp donde querés recibir las consultas de tus clientes (Ej: +54 9 1131234567 o 1131234567).")
             set_user_state(wa_id, WAITING_FOR_WHATSAPP)
@@ -969,6 +1076,52 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None):
 
     elif estado_actual == WAITING_FOR_RECEIPT:
         send_whatsapp_message(wa_id, "📸 Por favor, enviame la foto o captura del comprobante de transferencia por acá para que podamos verificarlo.\n\n(Si querés volver al menú principal, escribí *menu*)")
+
+    elif estado_actual == WAITING_FOR_PRICE_LIST:
+        send_whatsapp_message(wa_id, "⏳ Analizando tu lista de precios... aguardá unos segundos.")
+        try:
+            parsed = parse_price_list(texto, is_text=True)
+            if parsed and parsed.get("items"):
+                procesar_borrador_lista_precios(wa_id, parsed, nombre)
+            else:
+                send_whatsapp_message(wa_id, "⚠️ No pude detectar una lista de precios en el texto. Asegurate de incluir nombres de servicios y montos (por ejemplo: 'Corte $15.000 / Barba $8.000').")
+        except Exception as e:
+            logging.error(f"Error parseando texto de precios: {e}")
+            send_whatsapp_message(wa_id, "❌ Hubo un error al procesar el texto. Por favor reintentá.")
+
+    elif estado_actual == CONFIRM_PRICE_LIST_DRAFT:
+        if texto_limpio in ["confirm_prices_ok", "publicar", "si", "sí", "confirmar", "1", "ok"]:
+            user_session = get_user_state(wa_id)
+            temp_data = user_session.get("temp_data", {})
+            draft_prices = temp_data.get("draft_prices")
+            
+            web_info = obtener_web_del_cliente(wa_id)
+            if web_info and draft_prices:
+                content = web_info["content"]
+                content["lista_precios"] = draft_prices
+                if actualizar_web_content(web_info["version_id"], content):
+                    clear_user_state(wa_id)
+                    if web_info.get("custom_domain"):
+                        public_url = f"https://{web_info['custom_domain']}/precios"
+                    else:
+                        slug = web_info.get("slug", "mi-web")
+                        public_url = f"https://{slug}.tuweblista.com.ar/precios"
+                    msg = (f"✅ ¡Lista de precios publicada con éxito! 🎉\n\n"
+                           f"Tus clientes ya pueden ver tus precios actualizados en:\n"
+                           f"🔗 {public_url}\n\n"
+                           f"Escribí *menu* cuando quieras hacer otro cambio.")
+                    send_whatsapp_message(wa_id, msg)
+                else:
+                    send_whatsapp_message(wa_id, "❌ Hubo un error al guardar tu lista de precios en la base de datos.")
+            else:
+                send_whatsapp_message(wa_id, "⚠️ No se encontró el borrador o los datos de tu web. Por favor reintentá cargando la lista.")
+                clear_user_state(wa_id)
+        elif texto_limpio in ["confirm_prices_cancel", "cancelar", "no", "descartar", "2"]:
+            clear_user_state(wa_id)
+            send_whatsapp_message(wa_id, "❌ Publicación cancelada. El borrador fue descartado y tus precios no sufrieron modificaciones.")
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+        else:
+            send_whatsapp_message(wa_id, "Por favor respondé *Publicar* para confirmar la subida a tu web o *Cancelar* para descartar el borrador.")
 
     else:
         # Fallback si estamos en IDLE

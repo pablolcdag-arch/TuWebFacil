@@ -169,7 +169,7 @@ def send_whatsapp_list(to_number, text, button_text, options, title=""):
     }
     
     rows = []
-    for opt in options:
+    for opt in options[:10]:
         row = {
             "id": opt["id"][:200],
             "title": opt["title"][:24]

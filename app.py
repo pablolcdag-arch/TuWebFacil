@@ -117,6 +117,35 @@ Elementos: Ícono de WhatsApp, cursor haciendo clic."""
 
 initialize_db()
 
+def get_draft_prices_by_token(token):
+    """Busca en user_sessions si existe un draft_token generado por el bot y retorna draft_prices."""
+    if not token:
+        return None
+    db_path = os.path.join(os.getcwd(), 'messages.db')
+    if not os.path.exists(db_path):
+        return None
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        c = conn.cursor()
+        c.execute("SELECT temp_data FROM user_sessions WHERE temp_data LIKE ?", (f'%"{token}"%',))
+        rows = c.fetchall()
+        for row in rows:
+            if row[0]:
+                try:
+                    data = json.loads(row[0])
+                    if data.get("draft_token") == token:
+                        return data.get("draft_prices")
+                except Exception:
+                    continue
+    except Exception as e:
+        logging.error(f"Error buscando draft_token en SQLite: {e}")
+    finally:
+        if conn:
+            conn.close()
+    return None
+
 @app.template_filter('format_phone')
 def format_phone(phone_str):
     if not phone_str: return ""
@@ -305,13 +334,23 @@ def check_custom_domain():
             content_data = cont.data[0]["content"]
             parsed_content = json.loads(content_data) if isinstance(content_data, str) else content_data
             
+            # Soporte de vista previa temporal para lista de precios (?preview=TOKEN)
+            preview_token = request.args.get("preview")
+            is_preview = False
+            if preview_token:
+                draft_prices = get_draft_prices_by_token(preview_token)
+                if draft_prices:
+                    parsed_content["lista_precios"] = draft_prices
+                    is_preview = True
+
             has_edits = cont.data[0]["version"] > 1
             return render_template('client_template.html', 
                                  web_content=parsed_content, 
                                  client=cli.data[0], 
                                  web_status=web['status'],
                                  bot_phone=BOT_PHONE,
-                                 has_edits=has_edits)
+                                 has_edits=has_edits,
+                                 is_preview=is_preview)
     return None
 
 @app.route('/uploads/<path:filename>')
@@ -429,6 +468,7 @@ def process_form():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/', subdomain="<client_slug>")
+@app.route('/precios', subdomain="<client_slug>")
 def client_website(client_slug):
     try:
         # 1. Prioridad: Consultar en Supabase si está disponible
@@ -447,23 +487,42 @@ def client_website(client_slug):
                 content_data = cont.data[0]["content"]
                 parsed_content = json.loads(content_data) if isinstance(content_data, str) else content_data
                 
+                # Soporte de vista previa temporal para lista de precios (?preview=TOKEN)
+                preview_token = request.args.get("preview")
+                is_preview = False
+                if preview_token:
+                    draft_prices = get_draft_prices_by_token(preview_token)
+                    if draft_prices:
+                        parsed_content["lista_precios"] = draft_prices
+                        is_preview = True
+
                 has_edits = cont.data[0]["version"] > 1
                 return render_template('client_template.html', 
                                      web_content=parsed_content, 
                                      client=cli.data[0], 
                                      web_status=web['status'],
                                      bot_phone=BOT_PHONE,
-                                     has_edits=has_edits)
+                                     has_edits=has_edits,
+                                     is_preview=is_preview)
 
         # 2. Fallback: Si no está en BD (o no hay conexión), buscar en la caché local en memoria
         if client_slug in DEMO_SITES:
             site = DEMO_SITES[client_slug]
+            web_content = dict(site["web_content"])
+            preview_token = request.args.get("preview")
+            is_preview = False
+            if preview_token:
+                draft_prices = get_draft_prices_by_token(preview_token)
+                if draft_prices:
+                    web_content["lista_precios"] = draft_prices
+                    is_preview = True
             return render_template('client_template.html', 
-                                 web_content=site["web_content"], 
+                                 web_content=web_content, 
                                  client=site["client"], 
                                  web_status=site["status"],
                                  bot_phone=BOT_PHONE,
-                                 has_edits=False)
+                                 has_edits=False,
+                                 is_preview=is_preview)
         
         logging.warning(f"No se encontró la web '{client_slug}'")
         return redirect(url_for('index'))

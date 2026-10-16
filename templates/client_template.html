@@ -45,6 +45,11 @@
     </style>
 </head>
 <body class="bg-white font-sans text-slate-900 pb-24 md:pb-32">
+    {% if is_preview %}
+    <div class="bg-amber-500 text-slate-950 font-bold px-4 py-3 text-center text-sm md:text-base tracking-wide relative z-50 shadow-md border-b border-amber-600/30 flex items-center justify-center gap-2">
+        <span>🔍 VISTA PREVIA (Borrador sin publicar) — Los cambios aún no son públicos. Revisá tus precios y confirmá en WhatsApp.</span>
+    </div>
+    {% endif %}
     {% if web_status == 'demo' %}
     <div class="bg-indigo-600 text-white px-4 py-3 text-center text-sm font-semibold tracking-wide relative z-50 shadow-md">
         ⚠️ Esta web está en modo Demo. 
@@ -112,7 +117,167 @@
         {% endif %}
     </section>
 
-    <!-- Sección de Precios Eliminada -->
+    {% if web_content.lista_precios and web_content.lista_precios.get('items') %}
+    {% set raw_phone = (web_content.whatsapp_contacto if (web_content and web_content.whatsapp_contacto) else (client.phone if (client and client.phone) else '')) | string %}
+    {% set clean_phone = raw_phone | replace('+', '') | replace(' ', '') | replace('-', '') %}
+    {% set business_title = web_content.titulo_web or 'Negocio' %}
+    {% set columnas = web_content.lista_precios.columnas_pago if (web_content.lista_precios.columnas_pago and web_content.lista_precios.columnas_pago|length > 0) else ['Efectivo'] %}
+    {% set first_col = columnas[0] %}
+    {% set first_col_clean = first_col | lower | replace(' ', '_') %}
+
+    <section id="precios" class="py-24 container mx-auto px-6">
+        <!-- Encabezado de la Sección -->
+        <div class="text-center mb-12">
+            <h2 class="text-3xl md:text-4xl font-black mb-4 uppercase tracking-tighter italic text-slate-900">
+                {{ web_content.lista_precios.titulo or 'Lista de Precios' }}
+            </h2>
+            <div class="w-24 h-2 bg-gradient-premium mx-auto rounded-full mb-4"></div>
+            <p class="text-slate-600 text-base md:text-lg max-w-2xl mx-auto">
+                Consultá nuestros tratamientos y reservá tu turno por WhatsApp.
+            </p>
+        </div>
+
+        <!-- Buscador en Tiempo Real -->
+        <div class="max-w-md mx-auto mb-10">
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                    <i class="fas fa-search"></i>
+                </div>
+                <input type="text"
+                       id="price-search-input"
+                       placeholder="Buscar tratamiento o servicio..."
+                       autocomplete="off"
+                       class="w-full pl-11 pr-10 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:bg-white transition-all shadow-sm">
+                <button type="button"
+                        id="price-search-clear"
+                        class="hidden absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+                        title="Limpiar búsqueda">
+                    <i class="fas fa-times-circle"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mensaje de Sin Resultados -->
+        <div id="price-no-results" class="hidden text-center py-12 px-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200 mb-8 max-w-md mx-auto">
+            <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-search text-xl"></i>
+            </div>
+            <p class="font-bold text-slate-800 text-base mb-1">No se encontraron servicios</p>
+            <p class="text-slate-500 text-sm mb-4">No encontramos resultados para tu búsqueda.</p>
+            <button type="button"
+                    id="price-clear-btn"
+                    class="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold shadow-sm transition">
+                Ver todos los precios
+            </button>
+        </div>
+
+        <!-- Vista Computadora / Tablet (hidden md:block) -->
+        <div class="hidden md:block overflow-hidden bg-white rounded-3xl border border-slate-200/80 shadow-lg" id="desktop-price-table-wrapper">
+            <table class="w-full text-left border-collapse" id="desktop-price-table">
+                <thead>
+                    <tr class="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                        <th scope="col" class="py-5 px-6">Tratamiento / Servicio</th>
+                        {% for col in columnas %}
+                        <th scope="col" class="py-5 px-6 text-center">{{ col }}</th>
+                        {% endfor %}
+                        <th scope="col" class="py-5 px-6 text-center">Acción</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-slate-700 text-sm">
+                    {% for item in web_content.lista_precios['items'] %}
+                    {% set item_first_price = item.precios.get(first_col_clean, item.precios.get(first_col, item.precios.get(first_col | lower, ''))) if item.precios is mapping else '' %}
+                    <tr class="price-table-row hover:bg-slate-50/70 transition-colors"
+                        data-service="{{ item.servicio }}"
+                        data-prices='{{ item.precios | tojson }}'>
+                        <td class="py-5 px-6 font-bold text-slate-900 text-base">
+                            {{ item.servicio }}
+                        </td>
+                        {% for col in columnas %}
+                        {% set col_clean = col | lower | replace(' ', '_') %}
+                        {% set p_val = item.precios.get(col_clean, item.precios.get(col, item.precios.get(col | lower, '-'))) if item.precios is mapping else '-' %}
+                        <td class="py-5 px-6 text-center font-bold text-slate-800 cursor-pointer hover:text-primary transition-colors desktop-price-cell"
+                            data-col="{{ col }}"
+                            data-col-clean="{{ col_clean }}"
+                            data-price="{{ p_val }}"
+                            title="Seleccionar {{ col }}: {{ p_val }}">
+                            {{ p_val }}
+                        </td>
+                        {% endfor %}
+                        <td class="py-5 px-6 text-center">
+                            {% set desk_msg = "Hola " ~ business_title ~ "! Quiero consultar disponibilidad para reservar un turno de: " ~ item.servicio ~ " (" ~ first_col ~ ": " ~ item_first_price ~ ")" %}
+                            <a href="https://wa.me/{{ clean_phone }}?text={{ desk_msg | urlencode }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="desktop-wa-btn inline-flex items-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md shadow-green-500/20 transition-all hover:scale-105 active:scale-95"
+                               data-service="{{ item.servicio }}"
+                               title="Pedir Turno">
+                                <i class="fab fa-whatsapp text-base"></i>
+                                <span>Pedir Turno</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Vista Celular (block md:hidden) -->
+        <div class="block md:hidden" id="mobile-price-section">
+            <!-- Selector de Pestañas / Pills Táctiles -->
+            <div class="mb-6">
+                <div class="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar" id="price-pills-container">
+                    {% for col in columnas %}
+                    {% set col_clean = col | lower | replace(' ', '_') %}
+                    {% set col_lower = col | lower %}
+                    <button type="button"
+                            class="price-tab-pill px-4 py-2.5 rounded-full text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap {% if loop.first %}active bg-primary text-white shadow-primary/30{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}"
+                            data-method="{{ col }}"
+                            data-col="{{ col_clean }}">
+                        <span>{% if 'efectivo' in col_lower or 'contado' in col_lower %}💵{% elif 'transf' in col_lower or 'mp' in col_lower or 'alias' in col_lower %}📲{% elif 'tarjeta' in col_lower or 'credito' in col_lower or 'debito' in col_lower %}💳{% else %}🏷️{% endif %}</span>
+                        <span>{{ col }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Lista de Tarjetas Compactas -->
+            <div class="space-y-3" id="mobile-price-cards">
+                {% for item in web_content.lista_precios['items'] %}
+                {% set item_first_price = item.precios.get(first_col_clean, item.precios.get(first_col, item.precios.get(first_col | lower, '-'))) if item.precios is mapping else '-' %}
+                <div class="price-item-card bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-3 hover:border-slate-200 transition"
+                     data-service="{{ item.servicio }}">
+                    <div class="min-w-0 flex-1">
+                        <h4 class="font-bold text-slate-900 text-sm leading-snug break-words">
+                            {{ item.servicio }}
+                        </h4>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <span class="price-value font-extrabold text-xl text-primary tracking-tight"
+                                  data-prices='{{ item.precios | tojson }}'>
+                                {{ item_first_price }}
+                            </span>
+                            <span class="price-method-badge text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                {{ first_col }}
+                            </span>
+                        </div>
+                    </div>
+                    {% set mob_msg = "Hola " ~ business_title ~ "! Quiero consultar disponibilidad para reservar un turno de: " ~ item.servicio ~ " (" ~ first_col ~ ": " ~ item_first_price ~ ")" %}
+                    <a href="https://wa.me/{{ clean_phone }}?text={{ mob_msg | urlencode }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="mobile-wa-btn shrink-0 px-3.5 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl flex items-center gap-1.5 shadow-md shadow-green-500/20 active:scale-95 transition text-xs font-bold"
+                       title="Pedir Turno"
+                       aria-label="Pedir Turno para {{ item.servicio }}"
+                       data-service="{{ item.servicio }}"
+                       data-prices='{{ item.precios | tojson }}'>
+                        <i class="fab fa-whatsapp text-base"></i>
+                        <span>Pedir Turno</span>
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
 
     <footer class="bg-slate-950 text-white py-24">
         <div class="container mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-20">
@@ -153,6 +318,164 @@
         <i class="fab fa-whatsapp text-3xl"></i>
     </a>
 
-    <script>lucide.createIcons();</script>
+    <script>
+        lucide.createIcons();
+
+        {% if web_content.lista_precios and web_content.lista_precios.get('items') %}
+        // --- GESTIÓN DE LISTA DE PRECIOS & SERVICIOS ---
+        (function() {
+            const businessTitle = {{ (web_content.titulo_web or 'Negocio') | tojson }};
+            const cleanPhone = {{ ((web_content.whatsapp_contacto if (web_content and web_content.whatsapp_contacto) else (client.phone if (client and client.phone) else '')) | string | replace('+', '') | replace(' ', '') | replace('-', '')) | tojson }};
+            const searchInput = document.getElementById('price-search-input');
+            const searchClearBtn = document.getElementById('price-search-clear');
+            const noResultsBox = document.getElementById('price-no-results');
+            const clearAllBtn = document.getElementById('price-clear-btn');
+            const desktopTableWrapper = document.getElementById('desktop-price-table-wrapper');
+            const mobileCardsContainer = document.getElementById('mobile-price-cards');
+            const tabPills = document.querySelectorAll('.price-tab-pill');
+
+            function normalizeText(text) {
+                return (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            }
+
+            function filterPriceList() {
+                if (!searchInput) return;
+                const query = normalizeText(searchInput.value);
+                
+                if (searchClearBtn) {
+                    if (query.length > 0) {
+                        searchClearBtn.classList.remove('hidden');
+                    } else {
+                        searchClearBtn.classList.add('hidden');
+                    }
+                }
+                
+                let visibleDesktop = 0;
+                document.querySelectorAll('.price-table-row').forEach(row => {
+                    const service = normalizeText(row.getAttribute('data-service'));
+                    if (!query || service.includes(query)) {
+                        row.style.display = '';
+                        visibleDesktop++;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+                
+                let visibleMobile = 0;
+                document.querySelectorAll('.price-item-card').forEach(card => {
+                    const service = normalizeText(card.getAttribute('data-service'));
+                    if (!query || service.includes(query)) {
+                        card.style.display = '';
+                        visibleMobile++;
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+                
+                const hasResults = (visibleDesktop > 0 || visibleMobile > 0);
+                if (!hasResults && query.length > 0) {
+                    if (noResultsBox) noResultsBox.classList.remove('hidden');
+                    if (desktopTableWrapper) desktopTableWrapper.classList.add('hidden');
+                    if (mobileCardsContainer) mobileCardsContainer.classList.add('hidden');
+                } else {
+                    if (noResultsBox) noResultsBox.classList.add('hidden');
+                    if (desktopTableWrapper) desktopTableWrapper.classList.remove('hidden');
+                    if (mobileCardsContainer) mobileCardsContainer.classList.remove('hidden');
+                }
+            }
+
+            if (searchInput) {
+                searchInput.addEventListener('input', filterPriceList);
+            }
+
+            function clearSearch() {
+                if (searchInput) {
+                    searchInput.value = '';
+                    filterPriceList();
+                    searchInput.focus();
+                }
+            }
+
+            if (searchClearBtn) searchClearBtn.addEventListener('click', clearSearch);
+            if (clearAllBtn) clearAllBtn.addEventListener('click', clearSearch);
+
+            // Selector táctil de pestañas (Mobile)
+            tabPills.forEach(pill => {
+                pill.addEventListener('click', function() {
+                    const colKey = this.getAttribute('data-col');
+                    const colName = this.getAttribute('data-method');
+                    
+                    tabPills.forEach(p => {
+                        p.classList.remove('active', 'bg-primary', 'text-white', 'shadow-primary/30');
+                        p.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+                    });
+                    this.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+                    this.classList.add('active', 'bg-primary', 'text-white', 'shadow-primary/30');
+                    
+                    document.querySelectorAll('.price-item-card').forEach(card => {
+                        const priceValEl = card.querySelector('.price-value');
+                        const badgeEl = card.querySelector('.price-method-badge');
+                        const waBtn = card.querySelector('.mobile-wa-btn');
+                        if (!priceValEl) return;
+                        
+                        let prices = {};
+                        try {
+                            prices = JSON.parse(priceValEl.getAttribute('data-prices') || '{}');
+                        } catch(e) {}
+                        
+                        const colClean = colKey.toLowerCase().replace(/ /g, '_');
+                        const priceStr = prices[colClean] || prices[colName.toLowerCase()] || prices[colName] || '-';
+                        priceValEl.textContent = priceStr;
+                        if (badgeEl) badgeEl.textContent = colName;
+                        
+                        if (waBtn) {
+                            const serviceName = waBtn.getAttribute('data-service') || '';
+                            const msgText = `Hola ${businessTitle}! Quiero consultar disponibilidad para reservar un turno de: ${serviceName} (${colName}: ${priceStr})`;
+                            waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`;
+                        }
+                    });
+                });
+            });
+
+            // Interactividad en celdas de la tabla desktop
+            document.querySelectorAll('.desktop-price-cell').forEach(cell => {
+                cell.addEventListener('click', function() {
+                    const colName = this.getAttribute('data-col');
+                    const priceVal = this.getAttribute('data-price');
+                    const row = this.closest('.price-table-row');
+                    if (!row) return;
+                    const waBtn = row.querySelector('.desktop-wa-btn');
+                    const serviceName = waBtn ? waBtn.getAttribute('data-service') : '';
+                    if (waBtn && priceVal !== '-') {
+                        const msgText = `Hola ${businessTitle}! Quiero consultar disponibilidad para reservar un turno de: ${serviceName} (${colName}: ${priceVal})`;
+                        waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`;
+                        waBtn.classList.add('ring-2', 'ring-green-400');
+                        setTimeout(() => waBtn.classList.remove('ring-2', 'ring-green-400'), 600);
+                    }
+                });
+            });
+        })();
+        {% endif %}
+
+        // Scroll automático a #precios si la URL lo requiere
+        (function() {
+            function checkScrollToPrecios() {
+                const isPrecios = window.location.hash === '#precios' || 
+                                  window.location.pathname.endsWith('/precios') || 
+                                  window.location.pathname.endsWith('/precios/');
+                if (isPrecios) {
+                    const el = document.getElementById('precios');
+                    if (el) {
+                        setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 150);
+                    }
+                }
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', checkScrollToPrecios);
+            } else {
+                setTimeout(checkScrollToPrecios, 150);
+            }
+        })();
+    </script>
 </body>
 </html>
