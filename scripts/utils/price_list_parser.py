@@ -398,8 +398,8 @@ def parse_price_list(input_data, filename=None, is_text=False):
                         logging.warning(f"Fallo Gemini con texto de PDF: {ge}")
                 return parse_text_fallback(extracted_text, default_title)
 
-        # Si no se pudo procesar tabularmente o es otro formato, intentar extraer texto y usar Gemini
-        if os.getenv("GEMINI_API_KEY"):
+        # Si es un archivo de texto plano adicional (.txt, .csv, .tsv sin procesar)
+        if ext in [".txt", ".tsv", ".csv"] and os.getenv("GEMINI_API_KEY"):
             try:
                 with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                     raw_content = f.read(50000)
