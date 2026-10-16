@@ -134,3 +134,16 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   7. Se crearon las suites de pruebas automatizadas `scripts/utils/test_price_list_backend.py` y `scripts/utils/test_price_list_frontend.py`, auditadas y aprobadas al 100% por los verificadores QA, certificando cero regresiones en los flujos preexistentes.
 - **Razón:** Permitir que profesionales y comercios de servicios (centros de estética, peluquerías, talleres, consultorios) publiquen listas de precios con múltiples modalidades de pago gestionadas íntegramente por WhatsApp y con control previo antes de salir al público.
 - **Impacto:** Apertura del segmento de profesionales y centros de estética (arquetipo Soteria), potenciando la conversión de visitantes web a turnos agendados por WhatsApp.
+
+## [16/10/2026] — Soporte para Quitar / Eliminar Lista de Precios desde WhatsApp
+- **Decisión:**
+  1. En `bot_engine.py`, se implementó la detección dinámica en `EDIT_MENU` (`edit_precios`): si el cliente ya cuenta con una `lista_precios` activa en su web, el bot lo notifica y le brinda la posibilidad tanto de actualizarla (enviando nuevo archivo/foto/texto) como de eliminarla escribiendo palabras clave (`quitar` o `borrar`).
+  2. En el estado `WAITING_FOR_PRICE_LIST`, se interceptan las palabras clave `["quitar", "borrar", "eliminar", "ocultar"]`:
+     - Remueve `lista_precios` del JSON `content` (`content.pop("lista_precios", None)`).
+     - Persiste la actualización en Supabase incrementando la versión mediante `actualizar_web_content()`.
+     - Confirma la eliminación por WhatsApp con el enlace de la web actualizada y redirige al menú de edición.
+     - Si el usuario no tenía lista publicada, informa que no existía ninguna lista previa sin realizar escrituras innecesarias en base de datos.
+  3. Se actualizó la suite `scripts/utils/test_price_list_backend.py` incorporando el Test 7 de eliminación y adaptación de menú (100% PASS).
+- **Razón:** Permitir a los clientes despublicar listas de precios o promociones vencidas de forma autónoma desde WhatsApp sin requerir asistencia manual de soporte técnico.
+- **Impacto:** Autonomía 100% para el ciclo de vida completo de la lista de precios (crear, previsualizar, publicar, actualizar y eliminar).
+

@@ -248,6 +248,7 @@ lista_precios{titulo, columnas_pago[], items[{servicio, precios{efectivo, transf
 - **Palabras de escape universales:** `menu`, `menú`, `volver`, `inicio`, `cancelar`.
 - **Disparador del panel:** cualquier texto que contenga `confirmar mi web` (los links de la web demo envían "Quiero confirmar mi web").
 - **IDs de opciones** (`MAIN_*`, `EDIT_*`, `FOTO_*`, `DOMINIO_*`) se comparan en minúsculas: son contrato con WhatsApp.
+- **Comandos de eliminación en WAITING_FOR_PRICE_LIST:** `quitar`, `borrar`, `eliminar`, `ocultar` (remueven `lista_precios` de `website_content` y confirman al usuario).
 - El estado **persiste ante reinicios** de `tuwebfacil_receiver`.
 
 ---

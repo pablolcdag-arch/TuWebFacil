@@ -701,14 +701,28 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, IDLE, {})
         elif texto_limpio in ["edit_precios", "precios", "lista de precios", "7"]:
-            msg = ("📋 *Actualización de Lista de Precios*\n\n"
-                   "Podés enviarme:\n"
-                   "1️⃣ Un archivo Excel (.xlsx) o CSV.\n"
-                   "2️⃣ Un archivo PDF con tus precios.\n"
-                   "3️⃣ Una foto nítida de tu lista o pizarra de precios.\n"
-                   "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
-                   "¿Cómo preferís enviármela?\n\n"
-                   "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
+            web_info = obtener_web_del_cliente(wa_id)
+            tiene_lista = False
+            if web_info and web_info.get("content"):
+                lp = web_info["content"].get("lista_precios")
+                if lp and isinstance(lp, dict) and lp.get("items"):
+                    tiene_lista = True
+
+            if tiene_lista:
+                msg = ("📋 *Lista de Precios Actual*\n\n"
+                       "Ya tenés una lista de precios publicada en tu web. Podés:\n\n"
+                       "1️⃣ *Actualizarla:* Enviame un nuevo archivo (Excel, CSV, PDF), una foto o pegá el texto acá directamente.\n\n"
+                       "2️⃣ *Eliminarla:* Escribí *quitar* o *borrar* para removerla completamente de tu página.\n\n"
+                       "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
+            else:
+                msg = ("📋 *Actualización de Lista de Precios*\n\n"
+                       "Podés enviarme:\n"
+                       "1️⃣ Un archivo Excel (.xlsx) o CSV.\n"
+                       "2️⃣ Un archivo PDF con tus precios.\n"
+                       "3️⃣ Una foto nítida de tu lista o pizarra de precios.\n"
+                       "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
+                       "¿Cómo preferís enviármela?\n\n"
+                       "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
             send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_PRICE_LIST)
         elif texto_limpio == "edit_whatsapp":
@@ -1079,6 +1093,23 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         send_whatsapp_message(wa_id, "📸 Por favor, enviame la foto o captura del comprobante de transferencia por acá para que podamos verificarlo.\n\n(Si querés volver al menú principal, escribí *menu*)")
 
     elif estado_actual == WAITING_FOR_PRICE_LIST:
+        if texto_limpio in ["quitar", "borrar", "eliminar", "ocultar"]:
+            web_info = obtener_web_del_cliente(wa_id)
+            if web_info and web_info.get("content") and "lista_precios" in web_info["content"] and web_info["content"]["lista_precios"]:
+                content = web_info["content"]
+                content.pop("lista_precios", None)
+                actualizar_web_content(web_info["version_id"], content)
+                slug = web_info.get("slug", "mi-web")
+                page_url = f"https://{web_info['custom_domain']}" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar"
+                msg = (f"🗑️ ¡Listo! Tu lista de precios fue eliminada de tu web y ya no aparece publicada.\n\n"
+                       f"🔗 Refrescá tu página para ver los cambios: {page_url}")
+                send_whatsapp_message(wa_id, msg)
+            else:
+                send_whatsapp_message(wa_id, "ℹ️ Tu web no tenía ninguna lista de precios publicada.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            procesar_mensaje(wa_id, "2", nombre)
+            return
+
         send_whatsapp_message(wa_id, "⏳ Analizando tu lista de precios... aguardá unos segundos.")
         try:
             parsed = parse_price_list(texto, is_text=True)

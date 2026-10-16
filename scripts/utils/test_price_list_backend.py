@@ -236,9 +236,118 @@ Corte y barba: $20.000"""
     print("  ✅ Confirmar publicación escribe en website_content, limpia sesión y envía link oficial.")
 
     # ---------------------------------------------------------
-    # TEST 7: Flask app.py - Vista Previa Temporal con ?preview=TOKEN
+    # TEST 7: Bot WhatsApp FSM - Eliminar / Quitar Lista de Precios
     # ---------------------------------------------------------
-    print("\n[TEST 7] Verificando ruta /precios y overlay de borrador en Flask...")
+    print("\n[TEST 7] Verificando eliminación de lista de precios ('quitar', 'borrar')...")
+    
+    # 7A: Cliente con lista existente escribe 'quitar'
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_LIST)
+
+    web_con_lista = {
+        "website_id": "w999",
+        "version_id": "v999",
+        "content": {
+            "titulo_web": "Spa Relax",
+            "lista_precios": {
+                "titulo": "Lista Actual",
+                "columnas_pago": ["Efectivo"],
+                "items": [{"servicio": "Masaje", "precios": {"efectivo": "$10.000"}}]
+            }
+        },
+        "slug": "spa-relax",
+        "custom_domain": None
+    }
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_con_lista):
+
+        bot_engine.procesar_mensaje(test_wa, "quitar", "Tester")
+
+        # Debe llamar a actualizar_web_content sin lista_precios
+        mock_update.assert_called_once()
+        ver_id, updated_cnt = mock_update.call_args[0]
+        assert ver_id == "v999"
+        assert "lista_precios" not in updated_cnt
+
+        # Mensaje de confirmación
+        assert mock_send_msg.called
+        del_confirm_msg = mock_send_msg.call_args_list[0][0][1]
+        assert "🗑️ ¡Listo! Tu lista de precios fue eliminada" in del_confirm_msg
+        assert "https://spa-relax.tuweblista.com.ar" in del_confirm_msg
+
+        # Debe haber vuelto a enviar el menú de edición (vía opción "2")
+        mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Edición de Web"
+
+    # 7B: Cliente sin lista previa escribe 'borrar'
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_LIST)
+
+    web_sin_lista = {
+        "website_id": "w999",
+        "version_id": "v999",
+        "content": {"titulo_web": "Spa Relax"},
+        "slug": "spa-relax",
+        "custom_domain": None
+    }
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+         patch("bot_engine.actualizar_web_content") as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_sin_lista):
+
+        bot_engine.procesar_mensaje(test_wa, "borrar", "Tester")
+
+        mock_update.assert_not_called()
+        info_msg = mock_send_msg.call_args_list[0][0][1]
+        assert "ℹ️ Tu web no tenía ninguna lista de precios publicada." in info_msg
+        mock_send_list.assert_called_once()
+
+    # 7C: Mensaje en EDIT_MENU con vs sin lista de precios
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
+
+    web_con_lista_activa = {
+        "website_id": "w999",
+        "version_id": "v999",
+        "content": {
+            "titulo_web": "Spa Relax",
+            "lista_precios": {
+                "titulo": "Lista Actual",
+                "columnas_pago": ["Efectivo"],
+                "items": [{"servicio": "Masaje", "precios": {"efectivo": "$10.000"}}]
+            }
+        },
+        "slug": "spa-relax",
+        "custom_domain": None
+    }
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_con_lista_activa):
+        bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
+        msg_con = mock_send_msg.call_args[0][1]
+        assert "Ya tenés una lista de precios publicada" in msg_con
+        assert "quitar" in msg_con
+
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_sin_lista):
+        bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
+        msg_sin = mock_send_msg.call_args[0][1]
+        assert "Ya tenés una lista de precios publicada" not in msg_sin
+        assert "Actualización de Lista de Precios" in msg_sin
+
+    print("  ✅ Eliminación de lista de precios y adaptación del menú de edición verificadas.")
+
+    # ---------------------------------------------------------
+    # TEST 8: Flask app.py - Vista Previa Temporal con ?preview=TOKEN
+    # ---------------------------------------------------------
+    print("\n[TEST 8] Verificando ruta /precios y overlay de borrador en Flask...")
     
     # Inyectar una sesión con draft_token en messages.db
     token_preview = "f9e8d7c6"
@@ -303,9 +412,9 @@ Corte y barba: $20.000"""
     print("  ✅ Flask overlay aplica draft_prices temporalmente y pasa is_preview=True.")
 
     # ---------------------------------------------------------
-    # TEST 8: Auditoría SQLite - Cierre de conexiones y WAL
+    # TEST 9: Auditoría SQLite - Cierre de conexiones y WAL
     # ---------------------------------------------------------
-    print("\n[TEST 8] Verificando integridad y ausencia de locks en messages.db...")
+    print("\n[TEST 9] Verificando integridad y ausencia de locks en messages.db...")
     db_path = bot_engine.get_db_path()
     conn = None
     try:
