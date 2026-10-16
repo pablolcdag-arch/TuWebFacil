@@ -242,7 +242,7 @@
                     {% set col_clean = col | lower | replace(' ', '_') %}
                     {% set col_lower = col | lower %}
                     <button type="button"
-                            class="price-tab-pill px-4 py-2.5 rounded-full text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap {% if loop.first %}active bg-primary text-white shadow-primary/30{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}"
+                            class="price-tab-pill cursor-pointer select-none px-4 py-2.5 rounded-full text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap {% if loop.first %}active bg-primary text-white shadow-primary/30{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}"
                             data-method="{{ col }}"
                             data-col="{{ col_clean }}">
                         <span>{% if 'efectivo' in col_lower or 'contado' in col_lower %}💵{% elif 'transf' in col_lower or 'mp' in col_lower or 'alias' in col_lower %}📲{% elif 'tarjeta' in col_lower or 'credito' in col_lower or 'debito' in col_lower %}💳{% else %}🏷️{% endif %}</span>
@@ -374,6 +374,7 @@
                 const pricesStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
                 return `Hola ${businessTitle}! Quiero consultar disponibilidad para reservar un turno de: ${serviceName}${pricesStr}`;
             }
+            const searchInput = document.getElementById('price-search-input');
             const searchClearBtn = document.getElementById('price-search-clear');
             const noResultsBox = document.getElementById('price-no-results');
             const clearAllBtn = document.getElementById('price-clear-btn');
@@ -448,9 +449,10 @@
 
             // Selector táctil de pestañas (Mobile)
             tabPills.forEach(pill => {
-                pill.addEventListener('click', function() {
-                    const colKey = this.getAttribute('data-col');
-                    const colName = this.getAttribute('data-method');
+                pill.addEventListener('click', function(e) {
+                    if (e) e.preventDefault();
+                    const colKey = this.getAttribute('data-col') || '';
+                    const colName = this.getAttribute('data-method') || '';
                     
                     tabPills.forEach(p => {
                         p.classList.remove('active', 'bg-primary', 'text-white', 'shadow-primary/30');
@@ -467,11 +469,15 @@
                         
                         let prices = {};
                         try {
-                            prices = JSON.parse(priceValEl.getAttribute('data-prices') || '{}');
-                        } catch(e) {}
+                            const rawPrices = priceValEl.getAttribute('data-prices') || (waBtn ? waBtn.getAttribute('data-prices') : '') || '{}';
+                            prices = JSON.parse(rawPrices);
+                        } catch(err) {
+                            console.error('Error parsing prices JSON:', err);
+                        }
                         
                         const colClean = colKey.toLowerCase().replace(/ /g, '_');
-                        const priceStr = prices[colClean] || prices[colName.toLowerCase()] || prices[colName] || '-';
+                        const colNoAccents = colName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/ /g, '_');
+                        const priceStr = prices[colClean] || prices[colNoAccents] || prices[colName.toLowerCase()] || prices[colName] || '-';
                         priceValEl.textContent = priceStr;
                         if (badgeEl) badgeEl.textContent = colName;
                         
