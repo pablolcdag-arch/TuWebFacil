@@ -309,7 +309,8 @@ def procesar_borrador_lista_precios(wa_id, parsed_data, nombre):
            f"{ejemplos_txt}\n\n"
            f"🔗 *Mirá cómo se ve tu lista acá:*\n"
            f"{preview_url}\n\n"
-           f"¿Deseás publicarla ahora mismo en tu web?")
+           f"¿Deseás publicarla ahora mismo en tu web?\n\n"
+           f"💡 _Si algo no se ve como querías, tocá Cancelar o escribí *soporte* para que te ayudemos a configurarlo._")
 
     buttons = [
         {"id": "CONFIRM_PRICES_OK", "title": "✅ Publicar Precios"},
@@ -499,10 +500,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                     if parsed and parsed.get("items"):
                         procesar_borrador_lista_precios(wa_id, parsed, nombre)
                     else:
-                        send_whatsapp_message(wa_id, "⚠️ No pude detectar una lista de precios válida en el documento. Probá enviarlo en formato Excel, CSV o pegando el texto directamente.")
+                        send_whatsapp_message(wa_id, "⚠️ No pude detectar una lista de precios válida en el documento. Podés escribir *soporte* para que te ayudemos a cargarla, o probar enviándola en formato Excel, CSV o texto.")
                 except Exception as e:
                     logging.error(f"Error parseando documento de precios: {e}")
-                    send_whatsapp_message(wa_id, "❌ Hubo un error al procesar el archivo. Probá enviarlo en otro formato o pegar el texto.")
+                    send_whatsapp_message(wa_id, "❌ No pudimos procesar el archivo. Podés escribir *soporte* para que lo carguemos juntos o probar enviarlo en formato Excel o CSV.")
             else:
                 send_whatsapp_message(wa_id, "❌ Hubo un error al descargar el archivo. Por favor intentá nuevamente.")
             return

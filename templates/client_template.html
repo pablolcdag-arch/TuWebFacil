@@ -203,7 +203,20 @@
                         </td>
                         {% endfor %}
                         <td class="py-5 px-6 text-center">
-                            {% set desk_msg = "Hola " ~ business_title ~ "! Quiero consultar disponibilidad para reservar un turno de: " ~ item.servicio ~ " (" ~ first_col ~ ": " ~ item_first_price ~ ")" %}
+                            {% set price_parts = [] %}
+                            {% for c_name in columnas %}
+                                {% set c_clean = c_name | lower | replace(' ', '_') %}
+                                {% set c_val = item.precios.get(c_clean, item.precios.get(c_name, item.precios.get(c_name | lower, ''))) if item.precios is mapping else '' %}
+                                {% if c_val and c_val != '-' %}
+                                    {% if columnas|length > 1 %}
+                                        {% set _ = price_parts.append("(" ~ c_name ~ ": " ~ c_val ~ ")") %}
+                                    {% else %}
+                                        {% set _ = price_parts.append("(" ~ c_val ~ ")") %}
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                            {% set prices_summary = price_parts | join(' ') %}
+                            {% set desk_msg = "Hola " ~ business_title ~ "! Quiero consultar disponibilidad para reservar un turno de: " ~ item.servicio ~ (" " ~ prices_summary if prices_summary else "") %}
                             <a href="https://wa.me/{{ clean_phone }}?text={{ desk_msg | urlencode }}"
                                target="_blank"
                                rel="noopener noreferrer"
@@ -259,7 +272,20 @@
                             </span>
                         </div>
                     </div>
-                    {% set mob_msg = "Hola " ~ business_title ~ "! Quiero consultar disponibilidad para reservar un turno de: " ~ item.servicio ~ " (" ~ first_col ~ ": " ~ item_first_price ~ ")" %}
+                    {% set price_parts_mob = [] %}
+                    {% for c_name in columnas %}
+                        {% set c_clean = c_name | lower | replace(' ', '_') %}
+                        {% set c_val = item.precios.get(c_clean, item.precios.get(c_name, item.precios.get(c_name | lower, ''))) if item.precios is mapping else '' %}
+                        {% if c_val and c_val != '-' %}
+                            {% if columnas|length > 1 %}
+                                {% set _ = price_parts_mob.append("(" ~ c_name ~ ": " ~ c_val ~ ")") %}
+                            {% else %}
+                                {% set _ = price_parts_mob.append("(" ~ c_val ~ ")") %}
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+                    {% set mob_prices_summary = price_parts_mob | join(' ') %}
+                    {% set mob_msg = "Hola " ~ business_title ~ "! Quiero consultar disponibilidad para reservar un turno de: " ~ item.servicio ~ (" " ~ mob_prices_summary if mob_prices_summary else "") %}
                     <a href="https://wa.me/{{ clean_phone }}?text={{ mob_msg | urlencode }}"
                        target="_blank"
                        rel="noopener noreferrer"
@@ -325,7 +351,29 @@
         (function() {
             const businessTitle = {{ (web_content.titulo_web or 'Negocio') | tojson }};
             const cleanPhone = {{ ((web_content.whatsapp_contacto if (web_content and web_content.whatsapp_contacto) else (client.phone if (client and client.phone) else '')) | string | replace('+', '') | replace(' ', '') | replace('-', '')) | tojson }};
-            const searchInput = document.getElementById('price-search-input');
+            const columnasPago = {{ columnas | tojson }};
+
+            function buildAllPricesMsg(serviceName, prices) {
+                let parts = [];
+                if (columnasPago && columnasPago.length > 1) {
+                    columnasPago.forEach(col => {
+                        const colClean = col.toLowerCase().replace(/ /g, '_');
+                        const pVal = prices[colClean] || prices[col.toLowerCase()] || prices[col];
+                        if (pVal && pVal !== '-') {
+                            parts.push(`(${col}: ${pVal})`);
+                        }
+                    });
+                } else if (columnasPago && columnasPago.length === 1) {
+                    const col = columnasPago[0];
+                    const colClean = col.toLowerCase().replace(/ /g, '_');
+                    const pVal = prices[colClean] || prices[col.toLowerCase()] || prices[col];
+                    if (pVal && pVal !== '-') {
+                        parts.push(`(${pVal})`);
+                    }
+                }
+                const pricesStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
+                return `Hola ${businessTitle}! Quiero consultar disponibilidad para reservar un turno de: ${serviceName}${pricesStr}`;
+            }
             const searchClearBtn = document.getElementById('price-search-clear');
             const noResultsBox = document.getElementById('price-no-results');
             const clearAllBtn = document.getElementById('price-clear-btn');
@@ -429,7 +477,7 @@
                         
                         if (waBtn) {
                             const serviceName = waBtn.getAttribute('data-service') || '';
-                            const msgText = `Hola ${businessTitle}! Quiero consultar disponibilidad para reservar un turno de: ${serviceName} (${colName}: ${priceStr})`;
+                            const msgText = buildAllPricesMsg(serviceName, prices);
                             waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`;
                         }
                     });
@@ -439,14 +487,17 @@
             // Interactividad en celdas de la tabla desktop
             document.querySelectorAll('.desktop-price-cell').forEach(cell => {
                 cell.addEventListener('click', function() {
-                    const colName = this.getAttribute('data-col');
                     const priceVal = this.getAttribute('data-price');
                     const row = this.closest('.price-table-row');
                     if (!row) return;
                     const waBtn = row.querySelector('.desktop-wa-btn');
                     const serviceName = waBtn ? waBtn.getAttribute('data-service') : '';
                     if (waBtn && priceVal !== '-') {
-                        const msgText = `Hola ${businessTitle}! Quiero consultar disponibilidad para reservar un turno de: ${serviceName} (${colName}: ${priceVal})`;
+                        let prices = {};
+                        try {
+                            prices = JSON.parse(row.getAttribute('data-prices') || '{}');
+                        } catch(e) {}
+                        const msgText = buildAllPricesMsg(serviceName, prices);
                         waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`;
                         waBtn.classList.add('ring-2', 'ring-green-400');
                         setTimeout(() => waBtn.classList.remove('ring-2', 'ring-green-400'), 600);
