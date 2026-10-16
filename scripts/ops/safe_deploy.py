@@ -141,7 +141,7 @@ def deploy():
 
     # 2.5 Instalar/actualizar dependencias en el VPS
     print("\n📦 Verificando dependencias en VPS...")
-    cmd_pip = f"cd {REMOTE_DIR} && pip install -r requirements.txt --quiet"
+    cmd_pip = f"cd {REMOTE_DIR} && pip install -r requirements.txt --break-system-packages --quiet"
     stdin, stdout, stderr = ssh.exec_command(cmd_pip)
     pip_err = stderr.read().decode().strip()
     if pip_err and "WARNING" not in pip_err:
