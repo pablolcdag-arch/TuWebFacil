@@ -272,9 +272,12 @@ def run_tests():
     mobile_cb_count = len(re.findall(r'class="[^"]*price-item-checkbox-mobile[^"]*"', html_full))
     assert mobile_cb_count == 3, f"Esperados 3 checkboxes mobile, encontrados {mobile_cb_count}"
 
-    # 6.C Barra flotante inferior de selección múltiple (Sticky Bar)
+    # 6.C Barra flotante inferior de selección múltiple (Carrito de Presupuesto)
     assert 'id="price-multi-bar"' in html_full, "Debe existir la barra flotante con id='price-multi-bar'"
+    assert 'z-[150]' in html_full, "La barra flotante #price-multi-bar debe tener z-[150] para superponerse a cualquier banner demo"
     assert 'id="multi-count"' in html_full, "Debe existir el contador con id='multi-count'"
+    assert 'id="multi-btn-count"' in html_full, "Debe existir el contador en el botón con id='multi-btn-count'"
+    assert 'Carrito:' in html_full, "La barra debe titularse explícitamente como 'Carrito:'"
     assert 'id="multi-totals-summary"' in html_full, "Debe existir el contenedor del total con id='multi-totals-summary'"
     assert 'id="multi-primary-total"' in html_full, "Debe existir el total destacado con id='multi-primary-total'"
     assert 'id="multi-clear-btn"' in html_full, "Debe existir el botón de deseleccionar con id='multi-clear-btn'"
@@ -286,12 +289,14 @@ def run_tests():
     assert 'selectedServices' in html_full, "El script JS debe mantener el estado selectedServices"
     assert 'function updateStickyBar' in html_full, "El script JS debe definir la función updateStickyBar"
     assert 'function setServiceSelected' in html_full, "El script JS debe definir la función setServiceSelected"
+    assert 'function handleRowWaBtnClick' in html_full, "El script JS debe definir la función handleRowWaBtnClick para sincronizar los botones de fila"
+    assert 'Pedir Presupuesto' in html_full, "El script JS debe actualizar el texto de botones a 'Pedir Presupuesto'"
 
     # 6.E Comprobar formato del mensaje compuesto para WhatsApp
     assert 'Total estimado' in html_full, "El script JS debe formatear el mensaje con 'Total estimado'"
     assert 'Quiero consultar disponibilidad y presupuesto para reservar un turno con estos tratamientos' in html_full, \
         "El script JS debe incluir el encabezado compuesto para múltiples tratamientos"
-    print("  ✅ Selección múltiple verificada: checkboxes en desktop/mobile, sticky bar y funciones de presupuesto unificado.")
+    print("  ✅ Selección múltiple verificada: checkboxes en desktop/mobile, sticky bar z-[150] y botones de fila sincronizados al carrito.")
 
     print("\n" + "=" * 75)
     print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1 PASARON CON ÉXITO (100% PASS)")

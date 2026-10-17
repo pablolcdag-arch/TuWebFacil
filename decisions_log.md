@@ -156,7 +156,10 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   3. En el bundle JavaScript, se implementó la sincronización bidireccional de checkboxes, el parser numérico tolerante a moneda argentina (`parsePriceValue`), el formateador ARS (`formatARS`), la actualización reactiva del total según la pestaña activa en mobile (`currentMobileCol`) y la persistencia de selecciones ante búsquedas en tiempo real.
   4. Se diseñó el generador de mensaje unificado para WhatsApp con viñetas y desglose de precios por servicio y totales por modalidad de pago (`encodeURIComponent`), preservando al mismo tiempo los botones individuales de "Pedir Turno" para consultas puntuales.
   5. Se actualizó la suite `scripts/utils/test_price_list_frontend.py` incorporando el Test 6 completo (100% PASS), auditado y aprobado formalmente por el Verificador Frontend con cero regresiones en los flujos críticos (Día 27, Pausado, SQLite WAL).
+  6. Se resolvió la jerarquía de capas elevando `#price-multi-bar` a `z-[150]` (y `bottom-6 md:bottom-8`), evitando que quede solapado por el banner demo inferior (`#bottom-dark-banner` con `z-[100]`), y se rediseñó con identidad visual explícita de carrito (`🛒 Carrito: X tratamientos`, total destacado y botón `Pedir Presupuesto (X)`).
+  7. Se implementó la sincronización reactiva de botones individuales de fila (`handleRowWaBtnClick`): si existen tratamientos seleccionados (`selectedServices.size > 0`), hacer clic en el botón verde de cualquier fila auto-incluye el servicio y despacha el presupuesto consolidado completo a WhatsApp, adaptando además el texto de los botones a `Pedir Presupuesto (X)` con anillo de énfasis `ring-primary`.
 - **Razón:** En centros de estética, peluquerías y profesionales de la salud/belleza, los clientes suelen combinar varios tratamientos o zonas en una misma consulta. Esta funcionalidad permite armar presupuestos combinados en un solo clic, aumentando el ticket promedio del negocio sin fricción.
 - **Impacto:** Experiencia de compra tipo "carrito ágil" 100% integrada a WhatsApp en el frontend, sin requerir cambios de backend ni migraciones de base de datos.
+
 
 

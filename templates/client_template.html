@@ -230,6 +230,7 @@
                                rel="noopener noreferrer"
                                class="desktop-wa-btn inline-flex items-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md shadow-green-500/20 transition-all hover:scale-105 active:scale-95"
                                data-service="{{ item.servicio }}"
+                               data-prices='{{ item.precios | tojson }}'
                                title="Pedir Turno">
                                 <i class="fab fa-whatsapp text-base"></i>
                                 <span>Pedir Turno</span>
@@ -317,24 +318,26 @@
             </div>
         </div>
 
-        <!-- Barra Flotante Inferior (Sticky Bar de Selección Múltiple) -->
+        <!-- Barra Flotante Inferior (Carrito de Presupuesto) -->
         <div id="price-multi-bar"
-             class="hidden fixed bottom-6 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:min-w-[520px] max-w-xl z-50 bg-slate-900/95 backdrop-blur-md text-white px-5 py-4 rounded-2xl shadow-2xl border border-white/10 transition-all duration-300">
+             class="hidden fixed bottom-6 md:bottom-8 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:min-w-[560px] max-w-xl z-[150] bg-slate-900/95 backdrop-blur-md text-white px-5 py-4 rounded-2xl shadow-2xl border border-white/10 transition-all duration-300 ring-1 ring-white/15">
             <div class="flex items-center justify-between gap-4">
                 <div class="min-w-0">
                     <div class="flex items-center gap-2">
-                        <span class="inline-flex items-center justify-center bg-primary text-white text-xs font-black px-2 py-0.5 rounded-full" id="multi-count">0</span>
-                        <span class="text-xs font-bold text-slate-200 uppercase tracking-wide">Tratamientos elegidos</span>
+                        <span class="text-base">🛒</span>
+                        <span class="text-xs font-bold text-slate-200 uppercase tracking-wide">
+                            Carrito: <span class="text-white font-black" id="multi-count">0</span> tratamientos
+                        </span>
                     </div>
-                    <div class="text-sm font-extrabold text-white mt-0.5 tracking-tight" id="multi-totals-summary">
+                    <div class="text-sm md:text-base font-extrabold text-white mt-0.5 tracking-tight" id="multi-totals-summary">
                         Total est.: <span class="text-green-400" id="multi-primary-total">$ 0</span>
                     </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                     <button type="button"
                             id="multi-clear-btn"
-                            class="text-xs text-slate-400 hover:text-white px-2 py-2 rounded-lg transition"
-                            title="Deseleccionar todo">
+                            class="text-xs text-slate-400 hover:text-white px-2.5 py-2 rounded-lg transition hover:bg-white/5"
+                            title="Vaciar carrito">
                         Limpiar
                     </button>
                     <a href="#"
@@ -343,7 +346,7 @@
                        rel="noopener noreferrer"
                        class="px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-green-500/25 active:scale-95 transition">
                         <i class="fab fa-whatsapp text-base"></i>
-                        <span>Pedir Turno</span>
+                        <span>Pedir Presupuesto (<span id="multi-btn-count">0</span>)</span>
                     </a>
                 </div>
             </div>
@@ -475,6 +478,33 @@
             function updateStickyBar() {
                 const count = selectedServices.size;
                 if (multiCountEl) multiCountEl.textContent = String(count);
+                const multiBtnCountEl = document.getElementById('multi-btn-count');
+                if (multiBtnCountEl) multiBtnCountEl.textContent = String(count);
+
+                // Actualizar visualmente los botones de fila
+                document.querySelectorAll('.desktop-wa-btn').forEach(btn => {
+                    const sName = btn.getAttribute('data-service') || '';
+                    const span = btn.querySelector('span');
+                    if (count > 0 && selectedServices.has(sName)) {
+                        if (span) span.textContent = `Pedir Presupuesto (${count})`;
+                        btn.classList.add('ring-2', 'ring-primary', 'bg-emerald-600');
+                    } else {
+                        if (span) span.textContent = 'Pedir Turno';
+                        btn.classList.remove('ring-2', 'ring-primary', 'bg-emerald-600');
+                    }
+                });
+
+                document.querySelectorAll('.mobile-wa-btn').forEach(btn => {
+                    const sName = btn.getAttribute('data-service') || '';
+                    const span = btn.querySelector('span');
+                    if (count > 0 && selectedServices.has(sName)) {
+                        if (span) span.textContent = `Presupuesto (${count})`;
+                        btn.classList.add('ring-2', 'ring-primary', 'bg-emerald-600');
+                    } else {
+                        if (span) span.textContent = 'Pedir Turno';
+                        btn.classList.remove('ring-2', 'ring-primary', 'bg-emerald-600');
+                    }
+                });
 
                 if (count === 0) {
                     if (multiBar) multiBar.classList.add('hidden');
@@ -657,6 +687,38 @@
                     updateStickyBar();
                 });
             }
+
+            // Sincronización de botones individuales de fila con el carrito
+            function handleRowWaBtnClick(e) {
+                if (selectedServices.size > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const serviceName = this.getAttribute('data-service') || '';
+                    let prices = {};
+                    try {
+                        prices = JSON.parse(this.getAttribute('data-prices') || '{}');
+                    } catch(err) {}
+
+                    // Si esta fila no estaba seleccionada, agregarla al carrito
+                    if (!selectedServices.has(serviceName)) {
+                        setServiceSelected(serviceName, prices, true);
+                    }
+
+                    // Abrir directamente la URL de WhatsApp con el presupuesto consolidado completo
+                    const targetUrl = multiWaBtn ? multiWaBtn.href : '';
+                    if (targetUrl && targetUrl !== '#') {
+                        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                    }
+                }
+            }
+
+            document.querySelectorAll('.desktop-wa-btn').forEach(btn => {
+                btn.addEventListener('click', handleRowWaBtnClick);
+            });
+
+            document.querySelectorAll('.mobile-wa-btn').forEach(btn => {
+                btn.addEventListener('click', handleRowWaBtnClick);
+            });
 
             function normalizeText(text) {
                 return (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
