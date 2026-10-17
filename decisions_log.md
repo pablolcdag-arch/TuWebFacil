@@ -149,3 +149,14 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** Permitir a los clientes despublicar listas de precios o promociones vencidas de forma autónoma desde WhatsApp sin requerir asistencia manual de soporte técnico, asegurando robustez en las vistas previas y una experiencia táctil impecable en celulares.
 - **Impacto:** Autonomía 100% para el ciclo de vida completo de la lista de precios (crear, previsualizar, publicar, actualizar y eliminar) con UX móvil optimizada.
 
+## [17/10/2026] — Implementación de Selección Múltiple de Servicios y Presupuesto por WhatsApp (Carrito de Tratamientos)
+- **Decisión:**
+  1. En `templates/client_template.html`, se incorporaron checkboxes interactivos (`.price-item-checkbox` en la tabla desktop y `.price-item-checkbox-mobile` en tarjetas mobile) para permitir que los usuarios seleccionen múltiples tratamientos o zonas simultáneamente.
+  2. Se diseñó e implementó la barra flotante sticky inferior (`#price-multi-bar`), estilizada con `bg-slate-900/95 backdrop-blur-md text-white`, que despliega el contador dinámico de tratamientos elegidos, el total estimado por modalidad de pago en vivo, el botón "Limpiar" y el botón verde "Pedir Turno" directo a WhatsApp.
+  3. En el bundle JavaScript, se implementó la sincronización bidireccional de checkboxes, el parser numérico tolerante a moneda argentina (`parsePriceValue`), el formateador ARS (`formatARS`), la actualización reactiva del total según la pestaña activa en mobile (`currentMobileCol`) y la persistencia de selecciones ante búsquedas en tiempo real.
+  4. Se diseñó el generador de mensaje unificado para WhatsApp con viñetas y desglose de precios por servicio y totales por modalidad de pago (`encodeURIComponent`), preservando al mismo tiempo los botones individuales de "Pedir Turno" para consultas puntuales.
+  5. Se actualizó la suite `scripts/utils/test_price_list_frontend.py` incorporando el Test 6 completo (100% PASS), auditado y aprobado formalmente por el Verificador Frontend con cero regresiones en los flujos críticos (Día 27, Pausado, SQLite WAL).
+- **Razón:** En centros de estética, peluquerías y profesionales de la salud/belleza, los clientes suelen combinar varios tratamientos o zonas en una misma consulta. Esta funcionalidad permite armar presupuestos combinados en un solo clic, aumentando el ticket promedio del negocio sin fricción.
+- **Impacto:** Experiencia de compra tipo "carrito ágil" 100% integrada a WhatsApp en el frontend, sin requerir cambios de backend ni migraciones de base de datos.
+
+

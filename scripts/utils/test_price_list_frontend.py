@@ -119,6 +119,8 @@ def run_tests():
     assert '<section id="precios"' not in html_empty, "El contenedor #precios no debe renderizarse si no hay lista_precios"
     assert 'id="price-search-input"' not in html_empty, "El buscador no debe aparecer si no hay lista_precios"
     assert 'id="price-pills-container"' not in html_empty, "Las pestañas táctiles no deben aparecer si no hay lista_precios"
+    assert 'id="price-multi-bar"' not in html_empty, "La barra flotante de selección múltiple no debe aparecer si no hay lista_precios"
+    assert 'price-item-checkbox' not in html_empty, "Los checkboxes de selección no deben aparecer si no hay lista_precios"
     assert 'VISTA PREVIA (Borrador sin publicar)' not in html_empty, "No debe mostrar banner de borrador si is_preview=False"
     assert 'Nuestros Servicios' in html_empty, "Debe renderizar la sección de servicios original normalmente"
     assert 'Depilación Láser' in html_empty, "Debe renderizar los servicios sugeridos estándar"
@@ -254,6 +256,42 @@ def run_tests():
     assert "window.location.pathname.endsWith('/precios')" in html_full, "El script debe detectar /precios en el pathname"
     assert "scrollIntoView({ behavior: 'smooth' })" in html_full, "El script debe invocar scrollIntoView con 'smooth'"
     print("  ✅ Lógica de scroll automático detectada en el bundle de JavaScript del template.")
+
+    # -------------------------------------------------------------------------
+    # TEST 6: Selección Múltiple de Servicios y Sticky Bar (Carrito)
+    # -------------------------------------------------------------------------
+    print("\n[TEST 6] Verificando Selección Múltiple y Sticky Bar (#price-multi-bar)...")
+    # 6.A Checkboxes en desktop
+    assert 'class="price-item-checkbox' in html_full, "Deben existir checkboxes con clase 'price-item-checkbox' en desktop"
+    desktop_cb_count = len(re.findall(r'class="[^"]*price-item-checkbox(?![a-zA-Z0-9\-_])[^"]*"', html_full))
+    assert desktop_cb_count == 3, f"Esperados 3 checkboxes desktop, encontrados {desktop_cb_count}"
+    assert '<th scope="col" class="py-5 px-4 text-center w-14">Elegir</th>' in html_full, "La tabla desktop debe tener la columna de cabecera 'Elegir'"
+
+    # 6.B Checkboxes en mobile
+    assert 'class="price-item-checkbox-mobile' in html_full, "Deben existir checkboxes con clase 'price-item-checkbox-mobile' en mobile"
+    mobile_cb_count = len(re.findall(r'class="[^"]*price-item-checkbox-mobile[^"]*"', html_full))
+    assert mobile_cb_count == 3, f"Esperados 3 checkboxes mobile, encontrados {mobile_cb_count}"
+
+    # 6.C Barra flotante inferior de selección múltiple (Sticky Bar)
+    assert 'id="price-multi-bar"' in html_full, "Debe existir la barra flotante con id='price-multi-bar'"
+    assert 'id="multi-count"' in html_full, "Debe existir el contador con id='multi-count'"
+    assert 'id="multi-totals-summary"' in html_full, "Debe existir el contenedor del total con id='multi-totals-summary'"
+    assert 'id="multi-primary-total"' in html_full, "Debe existir el total destacado con id='multi-primary-total'"
+    assert 'id="multi-clear-btn"' in html_full, "Debe existir el botón de deseleccionar con id='multi-clear-btn'"
+    assert 'id="multi-wa-btn"' in html_full, "Debe existir el botón de WhatsApp con id='multi-wa-btn'"
+
+    # 6.D Funciones de cálculo y lógica JS en el bundle
+    assert 'function parsePriceValue' in html_full, "El script JS debe definir la función parsePriceValue"
+    assert 'function formatARS' in html_full, "El script JS debe definir la función formatARS"
+    assert 'selectedServices' in html_full, "El script JS debe mantener el estado selectedServices"
+    assert 'function updateStickyBar' in html_full, "El script JS debe definir la función updateStickyBar"
+    assert 'function setServiceSelected' in html_full, "El script JS debe definir la función setServiceSelected"
+
+    # 6.E Comprobar formato del mensaje compuesto para WhatsApp
+    assert 'Total estimado' in html_full, "El script JS debe formatear el mensaje con 'Total estimado'"
+    assert 'Quiero consultar disponibilidad y presupuesto para reservar un turno con estos tratamientos' in html_full, \
+        "El script JS debe incluir el encabezado compuesto para múltiples tratamientos"
+    print("  ✅ Selección múltiple verificada: checkboxes en desktop/mobile, sticky bar y funciones de presupuesto unificado.")
 
     print("\n" + "=" * 75)
     print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1 PASARON CON ÉXITO (100% PASS)")
