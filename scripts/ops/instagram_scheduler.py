@@ -46,7 +46,7 @@ def run_scheduler():
             # Buscar posteos programados que ya hayan pasado la fecha/hora actual y estén en estado 'scheduled'
             current_time = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M")
             
-            c.execute("SELECT id, copy_text, design_description FROM marketing_content WHERE status = 'scheduled' AND scheduled_for <= ?", (current_time,))
+            c.execute("SELECT id, copy_text, design_description FROM marketing_content WHERE status = 'scheduled' AND scheduled_for <= ? ORDER BY scheduled_for ASC", (current_time,))
             posts_to_publish = c.fetchall()
             
             for post in posts_to_publish:

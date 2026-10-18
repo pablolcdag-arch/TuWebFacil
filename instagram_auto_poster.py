@@ -1,6 +1,8 @@
 import os
 import random
 import argparse
+import time
+import logging
 import requests
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -72,6 +74,7 @@ def generate_caption(content_type):
     return response.text.strip()
 
 def post_to_instagram(image_url, caption):
+    logging.info(f"Iniciando publicación en Instagram para imagen: {image_url}")
     # 1. Create Media Container
     url_create = f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media"
     payload = {
@@ -79,26 +82,72 @@ def post_to_instagram(image_url, caption):
         "caption": caption,
         "access_token": IG_ACCESS_TOKEN
     }
-    res = requests.post(url_create, data=payload)
-    data = res.json()
+    try:
+        res = requests.post(url_create, data=payload, timeout=30)
+        data = res.json()
+    except Exception as e:
+        logging.error(f"Error de conexión al crear media container: {e}")
+        return False
+
     if "id" not in data:
-        print("Error creating media container:", data)
+        logging.error(f"Error creating media container: {data}")
         return False
     creation_id = data["id"]
+    logging.info(f"Media container creado: ID {creation_id}. Esperando procesamiento...")
     
-    # 2. Publish Container
+    # 2. Polling de estado del contenedor (Meta procesa la imagen de forma asíncrona)
+    url_status = f"https://graph.facebook.com/v19.0/{creation_id}"
+    params_status = {
+        "fields": "status_code,status",
+        "access_token": IG_ACCESS_TOKEN
+    }
+    
+    max_checks = 15
+    is_ready = False
+    time.sleep(2)  # Pausa inicial para permitir que Meta descargue el asset
+    for attempt in range(max_checks):
+        try:
+            res_status = requests.get(url_status, params=params_status, timeout=15)
+            status_data = res_status.json()
+            status_code = status_data.get("status_code")
+            logging.info(f"Check contenedor {creation_id} (intento {attempt + 1}/{max_checks}): {status_code}")
+            
+            if status_code == "FINISHED":
+                is_ready = True
+                break
+            elif status_code == "ERROR":
+                logging.error(f"Meta reportó ERROR en procesamiento del contenedor: {status_data}")
+                return False
+            elif status_code == "EXPIRED":
+                logging.error(f"El contenedor de Meta expiró: {status_data}")
+                return False
+        except Exception as e:
+            logging.warning(f"Error consultando estado del contenedor (intento {attempt + 1}): {e}")
+            
+        time.sleep(3)
+        
+    if not is_ready:
+        logging.error(f"Timeout esperando que el contenedor {creation_id} pase a FINISHED.")
+        return False
+        
+    # 3. Publish Container
     url_publish = f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media_publish"
     payload_pub = {
         "creation_id": creation_id,
         "access_token": IG_ACCESS_TOKEN
     }
-    res_pub = requests.post(url_publish, data=payload_pub)
-    data_pub = res_pub.json()
+    try:
+        res_pub = requests.post(url_publish, data=payload_pub, timeout=30)
+        data_pub = res_pub.json()
+    except Exception as e:
+        logging.error(f"Error de conexión al publicar post: {e}")
+        return False
+
     if "id" in data_pub:
-        print("Successfully published to Instagram! Post ID:", data_pub["id"])
+        logging.info(f"Successfully published to Instagram! Post ID: {data_pub['id']}")
         return True
     else:
-        print("Error publishing post:", data_pub)
+        logging.error(f"Error publishing post: {data_pub}")
         return False
 
 import sqlite3
