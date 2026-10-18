@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import sqlite3
 import requests
@@ -9,7 +10,7 @@ from sender import send_whatsapp_message, send_whatsapp_image, download_whatsapp
 from scripts.utils.price_list_parser import parse_price_list
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 
 logging.basicConfig(level=logging.INFO)
 
@@ -44,6 +45,14 @@ WAITING_FOR_INSTAGRAM = "WAITING_FOR_INSTAGRAM"
 WAITING_FOR_TRANSFER_PHONE = "WAITING_FOR_TRANSFER_PHONE"
 WAITING_FOR_PRICE_LIST = "WAITING_FOR_PRICE_LIST"
 CONFIRM_PRICE_LIST_DRAFT = "CONFIRM_PRICE_LIST_DRAFT"
+WAITING_FOR_PRICE_MENU_OPTION = "WAITING_FOR_PRICE_MENU_OPTION"
+WAITING_FOR_PROMO_TITLE = "WAITING_FOR_PROMO_TITLE"
+WAITING_FOR_PROMO_DISCOUNT_1 = "WAITING_FOR_PROMO_DISCOUNT_1"
+WAITING_FOR_PROMO_DATE_1 = "WAITING_FOR_PROMO_DATE_1"
+WAITING_FOR_PROMO_TIER2_CHOICE = "WAITING_FOR_PROMO_TIER2_CHOICE"
+WAITING_FOR_PROMO_DISCOUNT_2 = "WAITING_FOR_PROMO_DISCOUNT_2"
+WAITING_FOR_PROMO_DATE_2 = "WAITING_FOR_PROMO_DATE_2"
+CONFIRM_PROMO_DRAFT = "CONFIRM_PROMO_DRAFT"
 
 
 def get_db_path():
@@ -343,6 +352,195 @@ def procesar_borrador_lista_precios(wa_id, parsed_data, nombre):
     ]
     send_whatsapp_buttons(wa_id, msg, buttons)
 
+MESES_ES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+}
+
+def parse_promo_date(texto):
+    """
+    Parsea y valida fechas para promociones.
+    Soporta formatos DD/MM y DD/MM/AAAA (con separadores /, -, . o espacios).
+    Si solo se ingresa DD/MM, calcula el año (actual, o el siguiente si ya pasó).
+    Retorna dict con 'iso' (YYYY-MM-DD) y 'display' ('27 de Octubre de 2026'), o None si no es válida.
+    """
+    if not texto:
+        return None
+    raw = str(texto).strip()
+    match = re.search(r'(\d{1,2})[/\-.\s](\d{1,2})(?:[/\-.\s](\d{2,4}))?', raw)
+    if not match:
+        return None
+    
+    try:
+        day = int(match.group(1))
+        month = int(match.group(2))
+        year_raw = match.group(3)
+        now = datetime.now()
+        
+        if year_raw:
+            year = int(year_raw)
+            if year < 100:
+                year += 2000
+        else:
+            year = now.year
+            target_candidate = datetime(year, month, day).date()
+            if target_candidate < now.date():
+                year += 1
+                
+        valid_date = datetime(year, month, day).date()
+        mes_nombre = MESES_ES.get(valid_date.month, "")
+        
+        return {
+            "iso": valid_date.strftime("%Y-%m-%d"),
+            "display": f"{valid_date.day} de {mes_nombre} de {valid_date.year}",
+            "year": valid_date.year,
+            "month": valid_date.month,
+            "day": valid_date.day,
+            "date": valid_date
+        }
+    except Exception as e:
+        logging.warning(f"Error parseando fecha '{texto}': {e}")
+        return None
+
+def detener_promocion_activa(wa_id, nombre):
+    """Detiene y retira la promoción por fecha activa de la web del cliente."""
+    web_info = obtener_web_del_cliente(wa_id)
+    if not web_info or not web_info.get("content"):
+        send_whatsapp_message(wa_id, "⚠️ No encontramos tu página web en el sistema.")
+        set_user_state(wa_id, MAIN_MENU, {})
+        return False
+
+    content = web_info["content"]
+    lp = content.get("lista_precios")
+    if lp and isinstance(lp, dict) and lp.get("promocion_fecha"):
+        lp.pop("promocion_fecha", None)
+        if actualizar_web_content(web_info["version_id"], content):
+            slug = web_info.get("slug", "mi-web")
+            public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
+            msg = (f"⏹️ ¡Listo! La promoción fue detenida y retirada de tu web.\n\n"
+                   f"Tus precios volvieron a mostrarse en su valor regular sin descuentos ni banners.\n\n"
+                   f"🔗 Refrescá tu web: {public_url}")
+            send_whatsapp_message(wa_id, msg)
+            set_user_state(wa_id, MAIN_MENU, {})
+            procesar_mensaje(wa_id, "2", nombre)
+            return True
+        else:
+            send_whatsapp_message(wa_id, "❌ Hubo un error al actualizar tu web en la base de datos.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return False
+    else:
+        send_whatsapp_message(wa_id, "ℹ️ Tu lista de precios no tiene ninguna promoción activa en este momento.")
+        set_user_state(wa_id, MAIN_MENU, {})
+        procesar_mensaje(wa_id, "2", nombre)
+        return False
+
+def generar_borrador_promocion(wa_id, temp_data, nombre):
+    """
+    Construye la estructura promocion_fecha, inyecta en draft_prices,
+    genera un draft_token seguro y envía mensaje con vista previa y botones.
+    """
+    web_info = obtener_web_del_cliente(wa_id)
+    if not web_info or not web_info.get("content"):
+        send_whatsapp_message(wa_id, "⚠️ No pudimos encontrar tu web en el sistema para asociar la promoción.")
+        set_user_state(wa_id, IDLE, {})
+        return False
+    
+    current_lp = web_info["content"].get("lista_precios")
+    if not current_lp or not isinstance(current_lp, dict) or not current_lp.get("items"):
+        send_whatsapp_message(wa_id, "⚠️ Necesitás tener una lista de precios publicada para poder activar una promoción.")
+        set_user_state(wa_id, IDLE, {})
+        return False
+    
+    desc_1 = temp_data.get("promo_desc_1", 30)
+    date_1_iso = temp_data.get("promo_date_1_iso", "")
+    date_1_display = temp_data.get("promo_date_1_display", "")
+    
+    escalas = [
+        {
+            "hasta": date_1_iso,
+            "hasta_display": date_1_display,
+            "descuento": desc_1,
+            "label": f"{desc_1}% OFF Anticipado"
+        }
+    ]
+    
+    has_tier2 = "promo_desc_2" in temp_data and "promo_date_2_iso" in temp_data
+    if has_tier2:
+        desc_2 = temp_data["promo_desc_2"]
+        date_2_iso = temp_data["promo_date_2_iso"]
+        date_2_display = temp_data["promo_date_2_display"]
+        escalas.append({
+            "hasta": date_2_iso,
+            "hasta_display": date_2_display,
+            "descuento": desc_2,
+            "label": f"{desc_2}% OFF"
+        })
+    
+    titulo_promo = temp_data.get("promo_title", "Jornada Especial")
+    promocion_data = {
+        "titulo": titulo_promo,
+        "activa": True,
+        "escalas": escalas
+    }
+    
+    draft_prices = json.loads(json.dumps(current_lp))
+    draft_prices["promocion_fecha"] = promocion_data
+    
+    draft_token = secrets.token_hex(4)
+    
+    conn = None
+    try:
+        conn = sqlite3.connect(get_db_path(), timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS price_drafts (
+                token TEXT PRIMARY KEY,
+                phone TEXT,
+                draft_prices TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        c.execute("""
+            INSERT OR REPLACE INTO price_drafts (token, phone, draft_prices)
+            VALUES (?, ?, ?)
+        """, (draft_token, wa_id, json.dumps(draft_prices)))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error guardando price_draft de promoción en SQLite: {e}")
+    finally:
+        if conn:
+            conn.close()
+            
+    temp_data["draft_token"] = draft_token
+    temp_data["draft_prices"] = draft_prices
+    temp_data["promocion_data"] = promocion_data
+    set_user_state(wa_id, CONFIRM_PROMO_DRAFT, temp_data)
+    
+    slug = web_info.get("slug", "mi-web")
+    if web_info.get("custom_domain"):
+        preview_url = f"https://{web_info['custom_domain']}/precios?preview={draft_token}"
+    else:
+        preview_url = f"https://{slug}.tuweblista.com.ar/precios?preview={draft_token}"
+        
+    tramo_2_txt = f"🟡 *Tramo 2:* {temp_data['promo_desc_2']}% OFF hasta el {temp_data['promo_date_2_display']}\n" if has_tier2 else ""
+    
+    msg = (f"🎉 *¡Borrador de Promoción generado!*\n\n"
+           f"📅 *Evento:* {titulo_promo}\n"
+           f"🟢 *Tramo 1:* {desc_1}% OFF hasta el {date_1_display}\n"
+           f"{tramo_2_txt}\n"
+           f"🔗 *Mirá cómo se ve tu promo y los precios en tu web:*\n"
+           f"{preview_url}\n\n"
+           f"¿Deseás activarla en tu web ahora mismo?")
+           
+    buttons = [
+        {"id": "CONFIRM_PROMO_OK", "title": "✅ Activar Promo"},
+        {"id": "CONFIRM_PROMO_CANCEL", "title": "❌ Cancelar"}
+    ]
+    send_whatsapp_buttons(wa_id, msg, buttons)
+    return True
+
 def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filename=None):
     """Función principal que enruta el mensaje según el estado actual."""
     print(f"DEBUG BOT: Mensaje recibido de {nombre} ({wa_id}): Tipo: {msg_type} - '{texto}'")
@@ -485,6 +683,11 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             if "website_id" in web_info:
                 temp_data["website_id"] = web_info["website_id"]
         set_user_state(wa_id, WAITING_FOR_RECEIPT, temp_data)
+        return
+
+    # 1.8 Interceptar intención de detener promoción activa ("detener promo", "frenar promo", "pausar promo")
+    if any(k in texto_limpio for k in ["detener promo", "frenar promo", "pausar promo", "detener promocion", "pausar promocion"]):
+        detener_promocion_activa(wa_id, nombre)
         return
 
     # 2. Detectar intención de inicio (Confirmar mi web) - Esto resetea al MAIN MENU
@@ -728,17 +931,28 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         elif texto_limpio in ["edit_precios", "precios", "lista de precios", "7"]:
             web_info = obtener_web_del_cliente(wa_id)
             tiene_lista = False
+            tiene_promo = False
             if web_info and web_info.get("content"):
                 lp = web_info["content"].get("lista_precios")
                 if lp and isinstance(lp, dict) and lp.get("items"):
                     tiene_lista = True
+                    if lp.get("promocion_fecha"):
+                        tiene_promo = True
 
             if tiene_lista:
-                msg = ("📋 *Lista de Precios Actual*\n\n"
-                       "Ya tenés una lista de precios publicada en tu web. Podés:\n\n"
-                       "1️⃣ *Actualizarla:* Enviame un nuevo archivo (Excel, CSV, PDF), una foto o pegá el texto acá directamente.\n\n"
-                       "2️⃣ *Eliminarla:* Escribí *quitar* o *borrar* para removerla completamente de tu página.\n\n"
-                       "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
+                options = [
+                    {"id": "PRECIOS_ACTUALIZAR", "title": "📄 Actualizar Precios", "description": "Subir nuevo Excel, PDF o texto"},
+                    {"id": "PROMO_FECHA_START", "title": "📅 Promo por Fecha", "description": "Reserva anticipada con % de descuento"}
+                ]
+                if tiene_promo:
+                    options.append({"id": "PROMO_DETENER", "title": "⏹️ Detener Promo Activa", "description": "Quitar descuento y volver a precios normales"})
+                options.append({"id": "PRECIOS_QUITAR", "title": "🗑️ Quitar Lista", "description": "Eliminar la lista de precios de la web"})
+                options.append({"id": "PRECIOS_VOLVER", "title": "⬅️ Volver", "description": "Regresar al menú de edición"})
+
+                msg = ("📋 *Gestión de Precios y Promociones*\n\n"
+                       "Ya tenés una lista de precios publicada en tu web. Elegí qué deseás configurar:")
+                send_whatsapp_list(wa_id, msg, "Ver Opciones", options, "Precios y Promos")
+                set_user_state(wa_id, WAITING_FOR_PRICE_MENU_OPTION)
             else:
                 msg = ("📋 *Actualización de Lista de Precios*\n\n"
                        "Podés enviarme:\n"
@@ -748,8 +962,8 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                        "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
                        "¿Cómo preferís enviármela?\n\n"
                        "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
-            send_whatsapp_message(wa_id, msg)
-            set_user_state(wa_id, WAITING_FOR_PRICE_LIST)
+                send_whatsapp_message(wa_id, msg)
+                set_user_state(wa_id, WAITING_FOR_PRICE_LIST)
         elif texto_limpio == "edit_whatsapp":
             send_whatsapp_message(wa_id, "Escribí el número de WhatsApp donde querés recibir las consultas de tus clientes (Ej: +54 9 1131234567 o 1131234567).")
             set_user_state(wa_id, WAITING_FOR_WHATSAPP)
@@ -1179,6 +1393,169 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         else:
             send_whatsapp_message(wa_id, "Por favor respondé *Publicar* para confirmar la subida a tu web o *Cancelar* para descartar el borrador.")
+
+    elif estado_actual == WAITING_FOR_PRICE_MENU_OPTION:
+        if texto_limpio in ["precios_actualizar", "actualizar", "actualizar precios", "1"]:
+            msg = ("📋 *Actualización de Lista de Precios*\n\n"
+                   "Podés enviarme:\n"
+                   "1️⃣ Un archivo Excel (.xlsx) o CSV.\n"
+                   "2️⃣ Un archivo PDF con tus precios.\n"
+                   "3️⃣ Una foto nítida de tu lista o pizarra de precios.\n"
+                   "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
+                   "¿Cómo preferís enviármela?\n\n"
+                   "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
+            send_whatsapp_message(wa_id, msg)
+            set_user_state(wa_id, WAITING_FOR_PRICE_LIST, {})
+        elif texto_limpio in ["promo_fecha_start", "promo", "promocion", "promo por fecha", "2"]:
+            web_info = obtener_web_del_cliente(wa_id)
+            if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
+                send_whatsapp_message(wa_id, "⚠️ Necesitás tener una lista de precios publicada antes de configurar una promoción.")
+                set_user_state(wa_id, MAIN_MENU, {})
+                procesar_mensaje(wa_id, "2", nombre)
+                return
+            msg = ("📅 *Promoción por Fecha / Reserva Anticipada*\n\n"
+                   "Paso 1 de 4: ¿Qué nombre o título querés ponerle al evento o jornada?\n"
+                   "(Por ejemplo: 'Jornada Láser 17 de Noviembre' o 'Jornada Especial').\n\n"
+                   "💡 _Escribí *cancelar* para volver al menú anterior._")
+            send_whatsapp_message(wa_id, msg)
+            set_user_state(wa_id, WAITING_FOR_PROMO_TITLE, {})
+        elif texto_limpio in ["promo_detener", "detener promo", "frenar promo", "pausar promo", "detener", "3"]:
+            detener_promocion_activa(wa_id, nombre)
+        elif texto_limpio in ["precios_quitar", "quitar", "borrar", "eliminar", "ocultar", "4"]:
+            web_info = obtener_web_del_cliente(wa_id)
+            if web_info and web_info.get("content") and "lista_precios" in web_info["content"] and web_info["content"]["lista_precios"]:
+                content = web_info["content"]
+                content.pop("lista_precios", None)
+                actualizar_web_content(web_info["version_id"], content)
+                slug = web_info.get("slug", "mi-web")
+                page_url = f"https://{web_info['custom_domain']}" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar"
+                msg = (f"🗑️ ¡Listo! Tu lista de precios fue eliminada de tu web y ya no aparece publicada.\n\n"
+                       f"🔗 Refrescá tu página para ver los cambios: {page_url}")
+                send_whatsapp_message(wa_id, msg)
+            else:
+                send_whatsapp_message(wa_id, "ℹ️ Tu web no tenía ninguna lista de precios publicada.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            procesar_mensaje(wa_id, "2", nombre)
+        elif texto_limpio in ["precios_volver", "volver", "cancelar", "5"]:
+            set_user_state(wa_id, MAIN_MENU, {})
+            procesar_mensaje(wa_id, "2", nombre)
+        else:
+            send_whatsapp_message(wa_id, "Por favor, elegí una opción de la lista de gestión de precios o escribí *volver*.")
+
+    elif estado_actual == WAITING_FOR_PROMO_TITLE:
+        promo_title = texto.strip()
+        temp_data = {"promo_title": promo_title}
+        set_user_state(wa_id, WAITING_FOR_PROMO_DISCOUNT_1, temp_data)
+        msg = ("🎯 Paso 2 de 4: ¿De cuánto es el porcentaje de descuento inicial por reserva anticipada?\n\n"
+               "Escribí solo el número (Por ejemplo: 30 para 30% OFF):")
+        send_whatsapp_message(wa_id, msg)
+
+    elif estado_actual == WAITING_FOR_PROMO_DISCOUNT_1:
+        clean_num = re.sub(r'[^\d]', '', texto)
+        if not clean_num or not (1 <= int(clean_num) <= 99):
+            send_whatsapp_message(wa_id, "⚠️ Por favor, ingresá un porcentaje válido entre 1 y 99 (por ejemplo: 30 para 30% OFF):")
+            return
+        desc_1 = int(clean_num)
+        current_data = get_user_state(wa_id).get("temp_data", {})
+        current_data["promo_desc_1"] = desc_1
+        set_user_state(wa_id, WAITING_FOR_PROMO_DATE_1, current_data)
+        msg = (f"⏳ Paso 3 de 4: ¿Hasta qué fecha es válido ese {desc_1}% OFF inicial?\n\n"
+               "Escribí día y mes (Por ejemplo: 27/10 o 27/10/2026):")
+        send_whatsapp_message(wa_id, msg)
+
+    elif estado_actual == WAITING_FOR_PROMO_DATE_1:
+        parsed_date = parse_promo_date(texto)
+        if not parsed_date:
+            send_whatsapp_message(wa_id, "⚠️ No pude entender la fecha. Por favor escribí el día y el mes (por ejemplo: 27/10 o 27/10/2026):")
+            return
+        current_data = get_user_state(wa_id).get("temp_data", {})
+        current_data["promo_date_1_iso"] = parsed_date["iso"]
+        current_data["promo_date_1_display"] = parsed_date["display"]
+        set_user_state(wa_id, WAITING_FOR_PROMO_TIER2_CHOICE, current_data)
+        msg = (f"¿Querés agregar un 2do tramo con menor descuento antes de la fecha final?\n\n"
+               f"(Por ejemplo: 15% OFF después del {parsed_date['display']})")
+        buttons = [
+            {"id": "PROMO_T2_YES", "title": "➕ Sí, agregar tramo"},
+            {"id": "PROMO_T2_NO", "title": "🚀 No, solo este"}
+        ]
+        send_whatsapp_buttons(wa_id, msg, buttons)
+
+    elif estado_actual == WAITING_FOR_PROMO_TIER2_CHOICE:
+        if texto_limpio in ["promo_t2_no", "no", "solo este", "1", "no agregar", "no, solo este"]:
+            current_data = get_user_state(wa_id).get("temp_data", {})
+            generar_borrador_promocion(wa_id, current_data, nombre)
+        elif texto_limpio in ["promo_t2_yes", "si", "sí", "agregar", "2", "si agregar", "agregar tramo", "si, agregar tramo"]:
+            current_data = get_user_state(wa_id).get("temp_data", {})
+            desc_1 = current_data.get("promo_desc_1", 30)
+            set_user_state(wa_id, WAITING_FOR_PROMO_DISCOUNT_2, current_data)
+            msg = (f"🎯 Paso 4 de 4: ¿De cuánto es el porcentaje de descuento para el 2do tramo?\n\n"
+                   f"Debe ser menor al {desc_1}% (Por ejemplo: 15 para 15% OFF):")
+            send_whatsapp_message(wa_id, msg)
+        else:
+            buttons = [
+                {"id": "PROMO_T2_YES", "title": "➕ Sí, agregar tramo"},
+                {"id": "PROMO_T2_NO", "title": "🚀 No, solo este"}
+            ]
+            send_whatsapp_buttons(wa_id, "Por favor seleccioná si deseás agregar un segundo tramo con menor descuento:", buttons)
+
+    elif estado_actual == WAITING_FOR_PROMO_DISCOUNT_2:
+        clean_num = re.sub(r'[^\d]', '', texto)
+        if not clean_num or not (1 <= int(clean_num) <= 99):
+            send_whatsapp_message(wa_id, "⚠️ Por favor, ingresá un porcentaje válido entre 1 y 99 (por ejemplo: 15 para 15% OFF):")
+            return
+        desc_2 = int(clean_num)
+        current_data = get_user_state(wa_id).get("temp_data", {})
+        current_data["promo_desc_2"] = desc_2
+        set_user_state(wa_id, WAITING_FOR_PROMO_DATE_2, current_data)
+        date_1_display = current_data.get("promo_date_1_display", "")
+        msg = (f"⏳ ¿Hasta qué fecha límite es válido este {desc_2}% OFF?\n\n"
+               f"Debe ser posterior al {date_1_display} (Por ejemplo: 15/11 o 15/11/2026):")
+        send_whatsapp_message(wa_id, msg)
+
+    elif estado_actual == WAITING_FOR_PROMO_DATE_2:
+        parsed_date = parse_promo_date(texto)
+        if not parsed_date:
+            send_whatsapp_message(wa_id, "⚠️ No pude entender la fecha. Por favor escribí día y mes (por ejemplo: 15/11 o 15/11/2026):")
+            return
+        current_data = get_user_state(wa_id).get("temp_data", {})
+        current_data["promo_date_2_iso"] = parsed_date["iso"]
+        current_data["promo_date_2_display"] = parsed_date["display"]
+        generar_borrador_promocion(wa_id, current_data, nombre)
+
+    elif estado_actual == CONFIRM_PROMO_DRAFT:
+        if texto_limpio in ["confirm_promo_ok", "si", "sí", "activar", "publicar", "1", "ok", "confirmar"]:
+            user_session = get_user_state(wa_id)
+            temp_data = user_session.get("temp_data", {})
+            promocion_data = temp_data.get("promocion_data")
+            
+            web_info = obtener_web_del_cliente(wa_id)
+            if web_info and promocion_data:
+                content = web_info["content"]
+                if "lista_precios" in content and isinstance(content["lista_precios"], dict):
+                    content["lista_precios"]["promocion_fecha"] = promocion_data
+                    if actualizar_web_content(web_info["version_id"], content):
+                        clear_user_state(wa_id)
+                        slug = web_info.get("slug", "mi-web")
+                        public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
+                        msg = (f"🎉 ¡Promoción activada con éxito en tu web!\n\n"
+                               f"Tus clientes ya pueden ver los descuentos vigentes en:\n"
+                               f"🔗 {public_url}\n\n"
+                               f"💡 _Si completás tus turnos y querés frenar la promo antes de tiempo, entrá a Lista de Precios y elegí *Detener Promoción*._")
+                        send_whatsapp_message(wa_id, msg)
+                    else:
+                        send_whatsapp_message(wa_id, "❌ Hubo un error al guardar la promoción en la base de datos.")
+                else:
+                    send_whatsapp_message(wa_id, "⚠️ Tu web no cuenta con una lista de precios base válida.")
+                    clear_user_state(wa_id)
+            else:
+                send_whatsapp_message(wa_id, "⚠️ No se encontró el borrador de la promoción o los datos de tu web. Por favor reintentá.")
+                clear_user_state(wa_id)
+        elif texto_limpio in ["confirm_promo_cancel", "cancelar", "no", "descartar", "2"]:
+            clear_user_state(wa_id)
+            send_whatsapp_message(wa_id, "❌ Publicación cancelada. El borrador de la promoción fue descartado y tus precios no sufrieron modificaciones.")
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+        else:
+            send_whatsapp_message(wa_id, "Por favor respondé *Activar* para confirmar la subida de la promo o *Cancelar* para descartar el borrador.")
 
     else:
         # Fallback si estamos en IDLE

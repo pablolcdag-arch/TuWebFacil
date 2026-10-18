@@ -325,12 +325,20 @@ Corte y barba: $20.000"""
         "custom_domain": None
     }
 
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+    with patch("bot_engine.send_whatsapp_list") as mock_send_list, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_con_lista_activa):
         bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
-        msg_con = mock_send_msg.call_args[0][1]
+        assert mock_send_list.called
+        list_args = mock_send_list.call_args[0]
+        msg_con = list_args[1]
+        options_sent = list_args[3]
         assert "Ya tenés una lista de precios publicada" in msg_con
-        assert "quitar" in msg_con
+        opt_ids = [o["id"] for o in options_sent]
+        assert "PRECIOS_ACTUALIZAR" in opt_ids
+        assert "PROMO_FECHA_START" in opt_ids
+        assert "PRECIOS_QUITAR" in opt_ids
+        assert "PRECIOS_VOLVER" in opt_ids
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PRICE_MENU_OPTION
 
     bot_engine.clear_user_state(test_wa)
     bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
@@ -431,6 +439,228 @@ Corte y barba: $20.000"""
     bot_engine.clear_user_state(test_wa)
     bot_engine.clear_user_state("5491188887777")
     print("  ✅ messages.db opera en modo WAL y sin locks abiertos.")
+
+    # ---------------------------------------------------------
+    # TEST 10: FSM Interactiva para Promoción por Fecha (Reserva Anticipada)
+    # ---------------------------------------------------------
+    print("\n[TEST 10] Verificando FSM interactiva para Promoción por Fecha (Reserva Anticipada)...")
+    
+    # 10A. Helper de fechas parse_promo_date
+    d1 = bot_engine.parse_promo_date("27/10/2026")
+    assert d1 is not None and d1["iso"] == "2026-10-27"
+    assert "27 de Octubre de 2026" in d1["display"]
+    
+    d2 = bot_engine.parse_promo_date("15/11")
+    assert d2 is not None
+    assert d2["month"] == 11 and d2["day"] == 15
+    
+    d_inv = bot_engine.parse_promo_date("31/02/2026")
+    assert d_inv is None, "Fecha inválida 31/02 no debe ser aceptada"
+    
+    # 10B. Web con lista base activa
+    web_promo_test = {
+        "website_id": "w_promo_10",
+        "version_id": "v_promo_10",
+        "content": {
+            "titulo_web": "Soteria Estética",
+            "lista_precios": {
+                "titulo": "Lista Soteria",
+                "columnas_pago": ["Efectivo", "Transferencia", "Tarjeta"],
+                "items": [
+                    {"servicio": "Depilación Láser", "precios": {"efectivo": "$30.000", "transferencia": "$35.000", "tarjeta": "$40.000"}}
+                ]
+            }
+        },
+        "slug": "soteria-estetica",
+        "custom_domain": None
+    }
+    
+    # 10C. Selección de PROMO_FECHA_START desde WAITING_FOR_PRICE_MENU_OPTION
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_MENU_OPTION)
+    
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
+        
+        bot_engine.procesar_mensaje(test_wa, "promo_fecha_start", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_TITLE
+        assert "Paso 1 de 4" in mock_send_msg.call_args[0][1]
+        
+    # 10D. Paso 1: Título del Evento o Jornada
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(test_wa, "Jornada Láser 17 de Noviembre", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DISCOUNT_1
+        assert state["temp_data"]["promo_title"] == "Jornada Láser 17 de Noviembre"
+        assert "Paso 2 de 4" in mock_send_msg.call_args[0][1]
+
+    # 10E. Paso 2: Descuento Tramo 1 con validación
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        # Input inválido
+        bot_engine.procesar_mensaje(test_wa, "cien por ciento", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DISCOUNT_1
+        assert "porcentaje válido" in mock_send_msg.call_args[0][1]
+        
+        # Input válido: 30
+        bot_engine.procesar_mensaje(test_wa, "30%", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_1
+        assert state["temp_data"]["promo_desc_1"] == 30
+        assert "Paso 3 de 4" in mock_send_msg.call_args[0][1]
+
+    # 10F. Paso 3: Fecha Límite Tramo 1 y Botones Tramo 2 (<= 20 chars)
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.send_whatsapp_buttons") as mock_buttons:
+        # Input inválido
+        bot_engine.procesar_mensaje(test_wa, "mañana pasado", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_1
+        
+        # Input válido: 27/10/2026
+        bot_engine.procesar_mensaje(test_wa, "27/10/2026", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_TIER2_CHOICE
+        assert state["temp_data"]["promo_date_1_iso"] == "2026-10-27"
+        
+        mock_buttons.assert_called_once()
+        b_args = mock_buttons.call_args[0]
+        btns = b_args[2]
+        assert len(btns) == 2
+        for b in btns:
+            assert len(b["title"]) <= 20, f"Título de botón supera 20 chars: {b['title']}"
+
+    # 10G. Paso 4 (Flujo 2 tramos): Tramo 2 con Descuento y Fecha
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(test_wa, "promo_t2_yes", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DISCOUNT_2
+        assert "Paso 4 de 4" in mock_send_msg.call_args[0][1]
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(test_wa, "15", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_2
+        assert state["temp_data"]["promo_desc_2"] == 15
+
+    with patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
+        bot_engine.procesar_mensaje(test_wa, "15/11/2026", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.CONFIRM_PROMO_DRAFT
+        temp_data = state["temp_data"]
+        assert "draft_token" in temp_data
+        assert "draft_prices" in temp_data
+        
+        # Validar estructura y botones <= 20 chars
+        mock_buttons.assert_called_once()
+        confirm_btns = mock_buttons.call_args[0][2]
+        for b in confirm_btns:
+            assert len(b["title"]) <= 20, f"Botón de confirmación supera 20 chars: {b['title']}"
+            
+        preview_body = mock_buttons.call_args[0][1]
+        assert f"?preview={temp_data['draft_token']}" in preview_body
+        assert "Jornada Láser 17 de Noviembre" in preview_body
+        assert "30% OFF" in preview_body
+        assert "15% OFF" in preview_body
+
+    # 10H. Cancelación de Borrador de Promo
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.actualizar_web_content") as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
+        bot_engine.procesar_mensaje(test_wa, "confirm_promo_cancel", "Tester")
+        mock_update.assert_not_called()
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] in [bot_engine.IDLE, bot_engine.MAIN_MENU]
+
+    # 10I. Flujo con 1 tramo y Confirmación / Publicación en Supabase
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PROMO_TIER2_CHOICE, {
+        "promo_title": "Jornada Express",
+        "promo_desc_1": 25,
+        "promo_date_1_iso": "2026-10-30",
+        "promo_date_1_display": "30 de Octubre de 2026"
+    })
+    
+    with patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
+        # Usuario elige solo 1 tramo
+        bot_engine.procesar_mensaje(test_wa, "promo_t2_no", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.CONFIRM_PROMO_DRAFT
+        draft_promo = state["temp_data"]["promocion_data"]
+        assert len(draft_promo["escalas"]) == 1
+        assert draft_promo["escalas"][0]["descuento"] == 25
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
+        
+        bot_engine.procesar_mensaje(test_wa, "confirm_promo_ok", "Tester")
+        mock_update.assert_called_once()
+        ver_id, updated_content = mock_update.call_args[0]
+        assert ver_id == "v_promo_10"
+        assert "promocion_fecha" in updated_content["lista_precios"]
+        saved_promo = updated_content["lista_precios"]["promocion_fecha"]
+        assert saved_promo["activa"] is True
+        assert saved_promo["titulo"] == "Jornada Express"
+        assert saved_promo["escalas"][0]["descuento"] == 25
+        # Los items y columnas base siguen intactos
+        assert len(updated_content["lista_precios"]["items"]) == 1
+        
+        # Sesión reseteada
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.IDLE
+
+    # 10J. Detener Promoción Activa (PROMO_DETENER) y retorno a precios regulares
+    web_con_promo_activa = {
+        "website_id": "w_promo_10",
+        "version_id": "v_promo_10",
+        "content": {
+            "titulo_web": "Soteria Estética",
+            "lista_precios": {
+                "titulo": "Lista Soteria",
+                "columnas_pago": ["Efectivo"],
+                "items": [{"servicio": "Depilación", "precios": {"efectivo": "$30.000"}}],
+                "promocion_fecha": saved_promo
+            }
+        },
+        "slug": "soteria-estetica",
+        "custom_domain": None
+    }
+    
+    # 10J.1 Vía submenú WAITING_FOR_PRICE_MENU_OPTION
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_MENU_OPTION)
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.send_whatsapp_list"), \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_con_promo_activa):
+        
+        bot_engine.procesar_mensaje(test_wa, "promo_detener", "Tester")
+        mock_update.assert_called_once()
+        v_id, c_data = mock_update.call_args[0]
+        assert "promocion_fecha" not in c_data["lista_precios"]
+        assert len(c_data["lista_precios"]["items"]) == 1
+        confirm_detener = mock_send_msg.call_args_list[0][0][1]
+        assert "La promoción fue detenida" in confirm_detener
+
+    # 10J.2 Vía palabra clave global ('detener promo')
+    import copy
+    web_promo_activa_2 = copy.deepcopy(web_con_promo_activa)
+    web_promo_activa_2["content"]["lista_precios"]["promocion_fecha"] = saved_promo
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.send_whatsapp_list"), \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_activa_2):
+        
+        bot_engine.procesar_mensaje(test_wa, "detener promo", "Tester")
+        mock_update.assert_called_once()
+        v_id, c_data = mock_update.call_args[0]
+        assert "promocion_fecha" not in c_data["lista_precios"]
+    
+    print("  ✅ FSM interactiva, validaciones de fecha/descuento, generación de borrador y detención de promo verificadas al 100%.")
+
+    # Limpiar estado final
+    bot_engine.clear_user_state(test_wa)
 
     print("\n" + "=" * 70)
     print("🎉 TODAS LAS PRUEBAS DE LA ETAPA 1 (BACKEND) PASARON CON ÉXITO (100% PASS)")

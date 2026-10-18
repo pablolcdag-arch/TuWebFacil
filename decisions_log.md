@@ -161,5 +161,22 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** En centros de estética, peluquerías y profesionales de la salud/belleza, los clientes suelen combinar varios tratamientos o zonas en una misma consulta. Esta funcionalidad permite armar presupuestos combinados en un solo clic, aumentando el ticket promedio del negocio sin fricción.
 - **Impacto:** Experiencia de compra tipo "carrito ágil" 100% integrada a WhatsApp en el frontend, sin requerir cambios de backend ni migraciones de base de datos.
 
+## [17/10/2026] — Implementación de Submenú de Precios y FSM Interactiva para Promociones por Fecha (Backend Fase 1)
+- **Decisión:**
+  1. En `bot_engine.py`, se implementó el submenú interactivo en `EDIT_MENU` (`edit_precios`): si el cliente ya tiene una lista de precios publicada, se despliega una lista interactiva de WhatsApp (`WAITING_FOR_PRICE_MENU_OPTION`) con opciones para actualizar precios, iniciar promoción por fecha, detener promoción activa (si existe) y quitar lista, respetando estrictamente el límite de $\le 10$ filas de Meta.
+  2. Se diseñó e implementó la máquina de estados finitos (FSM) interactiva paso a paso para la configuración de promociones por fecha (reserva anticipada / jornadas):
+     - `WAITING_FOR_PROMO_TITLE`: Ingesta del título del evento o jornada (ej: "Jornada Láser 17 de Noviembre").
+     - `WAITING_FOR_PROMO_DISCOUNT_1`: Validación estricta de porcentaje entero entre 1 y 99 con repregunta defensiva.
+     - `WAITING_FOR_PROMO_DATE_1`: Helper `parse_promo_date` con cálculo inteligente de año (soporta `DD/MM` y `DD/MM/AAAA`) y formateo en español rioplatense (ej: "27 de Octubre de 2026") y formato ISO `YYYY-MM-DD`.
+     - `WAITING_FOR_PROMO_TIER2_CHOICE`: Botones interactivos $\le 20$ caracteres ("➕ Sí, agregar tramo" / "🚀 No, solo este").
+     - `WAITING_FOR_PROMO_DISCOUNT_2` y `WAITING_FOR_PROMO_DATE_2`: Configuración opcional del segundo tramo de descuento.
+  3. Se creó el generador de borrador `generar_borrador_promocion`: inyecta el objeto `promocion_fecha` dentro de una copia profunda de `lista_precios`, persiste el borrador en la tabla SQLite `price_drafts` y envía la vista previa interactiva (`/precios?preview=TOKEN`) con botones $\le 20$ caracteres ("✅ Activar Promo" / "❌ Cancelar").
+  4. En `CONFIRM_PROMO_DRAFT`, la confirmación persiste en Supabase `website_content.content["lista_precios"]["promocion_fecha"]` incrementando la versión en base de datos.
+  5. Se implementó el helper y acción `detener_promocion_activa` (`PROMO_DETENER`), accesible tanto desde el submenú como por palabras clave globales ("detener promo", "frenar promo", "pausar promo"), permitiendo a los comerciantes frenar la promoción inmediatamente cuando completan la agenda sin alterar los precios base.
+  6. Se amplió la suite `scripts/utils/test_price_list_backend.py` con el Test 10 integral (100% PASS), auditada y aprobada por el Verificador Backend con cero regresiones en los flujos preexistentes.
+- **Razón:** Permitir a los negocios de servicios (estética, depilación, consultorios, talleres) crear campañas de reserva anticipada por WhatsApp con fechas y porcentajes validados, protegiendo la agenda y eliminando ambigüedades en la interpretación de fechas y precios.
+- **Impacto:** Apertura comercial para promociones escalonadas (*early-bird*) gestionadas 100% por WhatsApp con vista previa obligatoria y freno de parada de emergencia.
+
+
 
 
