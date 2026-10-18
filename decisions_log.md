@@ -209,3 +209,15 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   6. Se actualizó la suite `scripts/utils/test_price_list_backend.py` (Tests 4, 7 y 10) validando el acceso desde `MAIN_MENU`, retrocompatibilidad con `EDIT_MENU`, contrato de caracteres y validación de fechas (100% PASS).
 - **Razón:** Los comerciantes actualizan precios y promociones con mucha mayor frecuencia que los textos o fotos institucionales; tener "Precios y Promos" en el menú principal reduce la fricción operativa a cero y descomprime el submenú de edición. Asimismo, exigir el año explícito en las fechas elimina errores de interpretación humana y rollovers accidentales de año.
 - **Impacto:** Arquitectura de navegación del bot más intuitiva, mayor visibilidad para la herramienta de precios y prompts conversacionales 100% deterministas.
+
+## [18/10/2026] — Corrección en Bot: Resolución y Entrega de URL Real en "Ver mi página web"
+- **Decisión:**
+  1. En `bot_engine.py`, dentro del manejador del menú principal (`MAIN_MENU`), se corrigió la opción `MAIN_VER_LINK` (y sus variantes `"ver mi pagina web"`, `"ver mi página web"`, `"ver web"`, `"1"`):
+     - Ahora invoca dinámicamente `obtener_web_del_cliente(wa_id)`.
+     - Si la web posee dominio propio (`custom_domain`), formatea y envía `https://{custom_domain}`.
+     - Si la web opera bajo subdominio, formatea y envía `https://{slug}.tuweblista.com.ar`.
+     - Incluye mensaje amigable con emojis, enlace clickeable directo y consejo para compartirlo en redes sociales o con clientes.
+     - Si no se detecta ninguna web vinculada al número remitente, envía mensaje defensivo informando la situación.
+  2. En `scripts/utils/test_price_list_backend.py`, se ampliaron los tests unitarios dentro del Test 4 (4E, 4F, 4G) cubriendo la entrega bajo subdominio, dominio propio y el fallback sin web registrada (100% PASS).
+- **Razón:** La opción enviaba un texto estático que prometía el enlace temporal pero omitía la consulta a Supabase y la URL final, impidiendo a los comerciantes acceder rápidamente a su web desde WhatsApp.
+- **Impacto:** Entrega inmediata y precisa del enlace web (demo o publicada) en un solo toque desde el menú principal.

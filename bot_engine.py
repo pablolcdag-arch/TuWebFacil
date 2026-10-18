@@ -883,9 +883,17 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             return
 
     elif estado_actual == MAIN_MENU:
-        if texto_limpio == "main_ver_link" or texto_limpio == "1":
-            msg = "Aún no la hemos publicado oficialmente, pero este es tu link temporal de Demo. En breve estará 100% activa."
-            send_whatsapp_message(wa_id, msg)
+        if texto_limpio in ["main_ver_link", "ver mi pagina web", "ver mi página web", "ver web", "1"]:
+            web_info = obtener_web_del_cliente(wa_id)
+            if web_info and (web_info.get("custom_domain") or web_info.get("slug")):
+                web_url = f"https://{web_info['custom_domain']}" if web_info.get("custom_domain") else f"https://{web_info['slug']}.tuweblista.com.ar"
+                msg = (f"🌐 *Tu Página Web:*\n\n"
+                       f"Podés verla y compartirla ingresando acá:\n"
+                       f"👉 {web_url}\n\n"
+                       f"💡 _Tip: Copiá este enlace para enviárselo a tus clientes o colocarlo en el perfil de tus redes sociales._")
+                send_whatsapp_message(wa_id, msg)
+            else:
+                send_whatsapp_message(wa_id, "⚠️ No encontramos una página web activa vinculada a tu número de teléfono. Escribí *menu* para ver las opciones disponibles.")
         elif texto_limpio in ["main_precios", "precios", "promos", "promociones", "lista de precios"]:
             mostrar_menu_precios(wa_id)
         elif texto_limpio == "main_soporte" or texto_limpio == "main_contact":

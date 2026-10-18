@@ -169,7 +169,44 @@ Corte y barba: $20.000"""
         edit_ids = [o["id"] for o in edit_opts]
         assert "EDIT_PRECIOS" not in edit_ids
 
-    print("  ✅ MAIN_MENU incluye MAIN_PRECIOS (2da pos), EDIT_MENU reducido a 9 opciones y retrocompatibilidad asegurada.")
+    # 4E: MAIN_MENU -> "main_ver_link" envía la URL de la web del cliente
+    bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
+    web_cliente_link = {
+        "slug": "estetica-sol",
+        "custom_domain": None,
+        "id": "w1"
+    }
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_cliente_link) as mock_get_web:
+        bot_engine.procesar_mensaje(test_wa, "main_ver_link", "Tester")
+        mock_get_web.assert_called_once_with(test_wa)
+        mock_send_msg.assert_called_once()
+        msg_text = mock_send_msg.call_args[0][1]
+        assert "🌐 *Tu Página Web:*" in msg_text
+        assert "https://estetica-sol.tuweblista.com.ar" in msg_text
+
+    # 4F: Probar con custom_domain y variantes textuales ("ver mi página web", "ver web", "1")
+    web_cliente_custom = {
+        "slug": "estetica-sol",
+        "custom_domain": "esteticasol.com.ar",
+        "id": "w1"
+    }
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_cliente_custom):
+        bot_engine.procesar_mensaje(test_wa, "ver mi página web", "Tester")
+        mock_send_msg.assert_called_once()
+        msg_text = mock_send_msg.call_args[0][1]
+        assert "https://esteticasol.com.ar" in msg_text
+
+    # 4G: Si el cliente no tiene web activa, informar adecuadamente
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=None):
+        bot_engine.procesar_mensaje(test_wa, "ver web", "Tester")
+        mock_send_msg.assert_called_once()
+        msg_text = mock_send_msg.call_args[0][1]
+        assert "No encontramos una página web activa" in msg_text
+
+    print("  ✅ MAIN_MENU incluye MAIN_PRECIOS (2da pos), EDIT_MENU reducido a 9 opciones, MAIN_VER_LINK verificado y retrocompatibilidad asegurada.")
 
     # ---------------------------------------------------------
     # TEST 5: Bot WhatsApp FSM - Generación de Borrador y Botones <= 20 chars
