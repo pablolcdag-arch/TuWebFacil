@@ -137,6 +137,49 @@
             </p>
         </div>
 
+        <!-- Banner de Jornada / Promoción por Fecha (si aplica) -->
+        {% if web_content.lista_precios.promocion_fecha and web_content.lista_precios.promocion_fecha.activa %}
+        {% set promo = web_content.lista_precios.promocion_fecha %}
+        <div id="promo-banner-container"
+             class="max-w-2xl mx-auto mb-10 p-5 md:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl shadow-xl border border-indigo-500/30 relative overflow-hidden transition-all"
+             data-promo='{{ promo | tojson }}'>
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0 text-xl shadow-inner text-amber-300">
+                    🔥
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                        <span class="text-xs uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/20">
+                            Evento Especial
+                        </span>
+                        <span id="promo-active-badge" class="hidden text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 animate-pulse">
+                            <!-- Se llena con JS: ej "🔥 30% OFF Activo hoy" -->
+                        </span>
+                    </div>
+                    <h3 class="text-lg md:text-xl font-black tracking-tight text-white mb-2">
+                        {{ promo.titulo }}
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/10 text-xs" id="promo-scales-list">
+                        {% for esc in promo.escalas %}
+                        <div class="promo-scale-pill flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10 transition-colors"
+                             data-until="{{ esc.hasta }}"
+                             data-discount="{{ esc.descuento }}"
+                             data-label="{{ esc.label }}">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-slate-400 indicator-dot"></span>
+                                <span class="font-medium text-slate-300">Hasta el {{ esc.hasta_display }}</span>
+                            </div>
+                            <span class="font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded-md">
+                                {{ esc.descuento }}% OFF
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Buscador en Tiempo Real -->
         <div class="max-w-md mx-auto mb-10">
             <div class="relative">
@@ -189,12 +232,14 @@
                     {% set item_first_price = item.precios.get(first_col_clean, item.precios.get(first_col, item.precios.get(first_col | lower, ''))) if item.precios is mapping else '' %}
                     <tr class="price-table-row hover:bg-slate-50/70 transition-colors"
                         data-service="{{ item.servicio }}"
-                        data-prices='{{ item.precios | tojson }}'>
+                        data-prices='{{ item.precios | tojson }}'
+                        data-regular-prices='{{ item.precios | tojson }}'>
                         <td class="py-5 px-4 text-center">
                             <input type="checkbox"
                                    class="price-item-checkbox w-5 h-5 accent-primary rounded cursor-pointer transition-transform hover:scale-110"
                                    data-service="{{ item.servicio }}"
                                    data-prices='{{ item.precios | tojson }}'
+                                   data-regular-prices='{{ item.precios | tojson }}'
                                    aria-label="Seleccionar {{ item.servicio }}">
                         </td>
                         <td class="py-5 px-6 font-bold text-slate-900 text-base">
@@ -206,7 +251,8 @@
                         <td class="py-5 px-6 text-center font-bold text-slate-800 cursor-pointer hover:text-primary transition-colors desktop-price-cell"
                             data-col="{{ col }}"
                             data-col-clean="{{ col_clean }}"
-                            data-price="{{ p_val }}">
+                            data-price="{{ p_val }}"
+                            data-regular-price="{{ p_val }}">
                             {{ p_val }}
                         </td>
                         {% endfor %}
@@ -231,6 +277,7 @@
                                class="desktop-wa-btn inline-flex items-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md shadow-green-500/20 transition-all hover:scale-105 active:scale-95"
                                data-service="{{ item.servicio }}"
                                data-prices='{{ item.precios | tojson }}'
+                               data-regular-prices='{{ item.precios | tojson }}'
                                title="Pedir Turno">
                                 <i class="fab fa-whatsapp text-base"></i>
                                 <span>Pedir Turno</span>
@@ -266,12 +313,15 @@
                 {% for item in web_content.lista_precios['items'] %}
                 {% set item_first_price = item.precios.get(first_col_clean, item.precios.get(first_col, item.precios.get(first_col | lower, '-'))) if item.precios is mapping else '-' %}
                 <div class="price-item-card bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-3 hover:border-slate-200 transition"
-                     data-service="{{ item.servicio }}">
+                     data-service="{{ item.servicio }}"
+                     data-prices='{{ item.precios | tojson }}'
+                     data-regular-prices='{{ item.precios | tojson }}'>
                     <div class="flex items-center gap-3 min-w-0 flex-1">
                         <input type="checkbox"
                                class="price-item-checkbox-mobile w-5 h-5 accent-primary rounded cursor-pointer shrink-0"
                                data-service="{{ item.servicio }}"
                                data-prices='{{ item.precios | tojson }}'
+                               data-regular-prices='{{ item.precios | tojson }}'
                                aria-label="Seleccionar {{ item.servicio }}">
                         <div class="min-w-0 flex-1">
                             <h4 class="font-bold text-slate-900 text-sm leading-snug break-words">
@@ -279,7 +329,8 @@
                             </h4>
                             <div class="flex items-baseline gap-2 mt-1">
                                 <span class="price-value font-extrabold text-xl text-primary tracking-tight"
-                                      data-prices='{{ item.precios | tojson }}'>
+                                      data-prices='{{ item.precios | tojson }}'
+                                      data-regular-prices='{{ item.precios | tojson }}'>
                                     {{ item_first_price }}
                                 </span>
                                 <span class="price-method-badge text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
@@ -309,7 +360,8 @@
                        title="Pedir Turno"
                        aria-label="Pedir Turno para {{ item.servicio }}"
                        data-service="{{ item.servicio }}"
-                       data-prices='{{ item.precios | tojson }}'>
+                       data-prices='{{ item.precios | tojson }}'
+                       data-regular-prices='{{ item.precios | tojson }}'>
                         <i class="fab fa-whatsapp text-base"></i>
                         <span>Pedir Turno</span>
                     </a>
@@ -402,36 +454,55 @@
             const businessTitle = {{ (web_content.titulo_web or 'Negocio') | tojson }};
             const cleanPhone = {{ ((web_content.whatsapp_contacto if (web_content and web_content.whatsapp_contacto) else (client.phone if (client and client.phone) else '')) | string | replace('+', '') | replace(' ', '') | replace('-', '')) | tojson }};
             const columnasPago = {{ columnas | tojson }};
+            const promoData = {{ (web_content.lista_precios.promocion_fecha if (web_content.lista_precios and web_content.lista_precios.promocion_fecha and web_content.lista_precios.promocion_fecha.activa) else None) | tojson }};
 
-            function buildAllPricesMsg(serviceName, prices) {
-                let parts = [];
-                if (columnasPago && columnasPago.length > 1) {
-                    columnasPago.forEach(col => {
-                        const colClean = col.toLowerCase().replace(/ /g, '_');
-                        const pVal = prices[colClean] || prices[col.toLowerCase()] || prices[col];
-                        if (pVal && pVal !== '-') {
-                            parts.push(`(${col}: ${pVal})`);
-                        }
-                    });
-                } else if (columnasPago && columnasPago.length === 1) {
-                    const col = columnasPago[0];
-                    const colClean = col.toLowerCase().replace(/ /g, '_');
-                    const pVal = prices[colClean] || prices[col.toLowerCase()] || prices[col];
-                    if (pVal && pVal !== '-') {
-                        parts.push(`(${pVal})`);
+            // --- EVALUACIÓN DINÁMICA DE PROMOCIÓN POR FECHA ---
+            let activeDiscount = 0;
+            let activeScale = null;
+            let todayStr = '';
+
+            if (promoData && promoData.activa && Array.isArray(promoData.escalas) && promoData.escalas.length > 0) {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                todayStr = `${year}-${month}-${day}`;
+
+                for (const esc of promoData.escalas) {
+                    if (esc && esc.hasta && todayStr <= esc.hasta) {
+                        activeScale = esc;
+                        activeDiscount = parseInt(esc.descuento, 10) || 0;
+                        break;
                     }
                 }
-                const pricesStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
-                return `Hola ${businessTitle}! Quiero consultar disponibilidad para reservar un turno de: ${serviceName}${pricesStr}`;
             }
-            const searchInput = document.getElementById('price-search-input');
-            const searchClearBtn = document.getElementById('price-search-clear');
-            const noResultsBox = document.getElementById('price-no-results');
-            const clearAllBtn = document.getElementById('price-clear-btn');
-            const desktopTableWrapper = document.getElementById('desktop-price-table-wrapper');
-            const mobileCardsContainer = document.getElementById('mobile-price-cards');
-            const tabPills = document.querySelectorAll('.price-tab-pill');
-            let currentMobileCol = columnasPago && columnasPago.length > 0 ? columnasPago[0] : 'Efectivo';
+
+            const promoBanner = document.getElementById('promo-banner-container');
+            if (promoBanner) {
+                if (activeScale && activeDiscount > 0) {
+                    const activeBadge = document.getElementById('promo-active-badge');
+                    if (activeBadge) {
+                        activeBadge.textContent = `🔥 ${activeDiscount}% OFF Activo hoy`;
+                        activeBadge.classList.remove('hidden');
+                    }
+                    document.querySelectorAll('.promo-scale-pill').forEach(pill => {
+                        const until = pill.getAttribute('data-until');
+                        const dot = pill.querySelector('.indicator-dot');
+                        if (until === activeScale.hasta) {
+                            pill.classList.remove('bg-white/5', 'border-white/10');
+                            pill.classList.add('bg-emerald-500/15', 'border-emerald-500/40', 'ring-1', 'ring-emerald-400/30');
+                            if (dot) {
+                                dot.classList.remove('bg-slate-400');
+                                dot.classList.add('bg-emerald-400', 'shadow-[0_0_8px_rgba(52,211,153,0.8)]');
+                            }
+                        } else if (until < todayStr) {
+                            pill.classList.add('opacity-40');
+                        }
+                    });
+                } else {
+                    promoBanner.style.display = 'none';
+                }
+            }
 
             // --- PARSER NUMÉRICO Y FORMATEADOR ARS ---
             function parsePriceValue(valStr) {
@@ -446,6 +517,21 @@
                 }
                 const num = parseFloat(clean);
                 return isNaN(num) ? 0 : num;
+            }
+
+            function hasDecimals(valStr) {
+                if (!valStr) return false;
+                const str = String(valStr).trim();
+                return str.includes(',') || /\.\d{1,2}$/.test(str);
+            }
+
+            function calculateDiscountedPrice(num, discountPercent, hadDecimals = false) {
+                if (!num || isNaN(num) || num <= 0) return 0;
+                const factor = (100 - discountPercent) / 100;
+                if (hadDecimals) {
+                    return Math.round(num * factor * 100) / 100;
+                }
+                return Math.round(num * factor);
             }
 
             function formatARS(val) {
@@ -464,6 +550,157 @@
                 const colNoAccents = colName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/ /g, '_');
                 return prices[colClean] || prices[colNoAccents] || prices[colName.toLowerCase()] || prices[colName] || '-';
             }
+
+            function getDiscountedPricesObject(regularPrices, discountPercent) {
+                if (!regularPrices || typeof regularPrices !== 'object') return {};
+                const result = {};
+                for (const [k, v] of Object.entries(regularPrices)) {
+                    if (v && v !== '-') {
+                        const num = parsePriceValue(v);
+                        if (num > 0) {
+                            const withDecimals = hasDecimals(v);
+                            const discountedNum = calculateDiscountedPrice(num, discountPercent, withDecimals);
+                            result[k] = formatARS(discountedNum);
+                        } else {
+                            result[k] = v;
+                        }
+                    } else {
+                        result[k] = v;
+                    }
+                }
+                return result;
+            }
+
+            function buildAllPricesMsg(serviceName, prices) {
+                let parts = [];
+                if (columnasPago && columnasPago.length > 1) {
+                    columnasPago.forEach(col => {
+                        const pVal = getPriceForCol(prices, col);
+                        if (pVal && pVal !== '-') {
+                            parts.push(`(${col}: ${pVal})`);
+                        }
+                    });
+                } else if (columnasPago && columnasPago.length === 1) {
+                    const col = columnasPago[0];
+                    const pVal = getPriceForCol(prices, col);
+                    if (pVal && pVal !== '-') {
+                        parts.push(`(${pVal})`);
+                    }
+                }
+                const pricesStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
+                let promoSuffix = '';
+                if (activeDiscount > 0 && promoData && promoData.titulo) {
+                    promoSuffix = ` 🔥 [Promo ${activeDiscount}% OFF - ${promoData.titulo}]`;
+                }
+                return `Hola ${businessTitle}! Quiero consultar disponibilidad para reservar un turno de: ${serviceName}${pricesStr}${promoSuffix}`;
+            }
+
+            const searchInput = document.getElementById('price-search-input');
+            const searchClearBtn = document.getElementById('price-search-clear');
+            const noResultsBox = document.getElementById('price-no-results');
+            const clearAllBtn = document.getElementById('price-clear-btn');
+            const desktopTableWrapper = document.getElementById('desktop-price-table-wrapper');
+            const mobileCardsContainer = document.getElementById('mobile-price-cards');
+            const tabPills = document.querySelectorAll('.price-tab-pill');
+            let currentMobileCol = columnasPago && columnasPago.length > 0 ? columnasPago[0] : 'Efectivo';
+
+            function updateMobileCardPrice(card, colName) {
+                const priceValEl = card.querySelector('.price-value');
+                if (!priceValEl) return;
+                let regPrices = {};
+                let discPrices = {};
+                try {
+                    regPrices = JSON.parse(card.getAttribute('data-regular-prices') || '{}');
+                    discPrices = JSON.parse(card.getAttribute('data-discounted-prices') || card.getAttribute('data-prices') || '{}');
+                } catch(e) {}
+                const regVal = getPriceForCol(regPrices, colName);
+                const discVal = getPriceForCol(discPrices, colName);
+
+                if (activeDiscount > 0 && regVal && regVal !== '-') {
+                    priceValEl.innerHTML = `
+                        <div class="flex flex-col">
+                            <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
+                            <div class="flex items-center gap-1.5 mt-0.5">
+                                <span class="font-extrabold text-xl text-emerald-600 tracking-tight">${discVal}</span>
+                                <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">${activeDiscount}% OFF</span>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    priceValEl.textContent = (activeDiscount > 0 && discVal && discVal !== '-') ? discVal : regVal;
+                }
+            }
+
+            function applyRealtimeDiscounts() {
+                if (!activeDiscount || activeDiscount <= 0) return;
+
+                // Desktop: celdas con precio tachado y badge
+                document.querySelectorAll('.price-table-row').forEach(row => {
+                    let regPrices = {};
+                    try {
+                        regPrices = JSON.parse(row.getAttribute('data-regular-prices') || row.getAttribute('data-prices') || '{}');
+                    } catch(e) {}
+                    const discPrices = getDiscountedPricesObject(regPrices, activeDiscount);
+                    const discPricesJson = JSON.stringify(discPrices);
+
+                    row.setAttribute('data-prices', discPricesJson);
+                    const cb = row.querySelector('.price-item-checkbox');
+                    if (cb) cb.setAttribute('data-prices', discPricesJson);
+                    const waBtn = row.querySelector('.desktop-wa-btn');
+                    if (waBtn) {
+                        waBtn.setAttribute('data-prices', discPricesJson);
+                        const sName = waBtn.getAttribute('data-service') || '';
+                        const msg = buildAllPricesMsg(sName, discPrices);
+                        waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+                    }
+
+                    row.querySelectorAll('.desktop-price-cell').forEach(cell => {
+                        const col = cell.getAttribute('data-col') || '';
+                        const regVal = getPriceForCol(regPrices, col);
+                        const discVal = getPriceForCol(discPrices, col);
+                        if (regVal && regVal !== '-') {
+                            cell.innerHTML = `
+                                <div class="flex flex-col items-center justify-center">
+                                    <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
+                                    <div class="flex items-center gap-1.5 mt-0.5">
+                                        <span class="font-extrabold text-emerald-600 text-sm md:text-base">${discVal}</span>
+                                        <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">${activeDiscount}% OFF</span>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    });
+                });
+
+                // Mobile: tarjetas con precio tachado y badge
+                document.querySelectorAll('.price-item-card').forEach(card => {
+                    let regPrices = {};
+                    try {
+                        regPrices = JSON.parse(card.getAttribute('data-regular-prices') || card.getAttribute('data-prices') || '{}');
+                    } catch(e) {}
+                    const discPrices = getDiscountedPricesObject(regPrices, activeDiscount);
+                    const discPricesJson = JSON.stringify(discPrices);
+
+                    card.setAttribute('data-prices', discPricesJson);
+                    card.setAttribute('data-discounted-prices', discPricesJson);
+                    const cb = card.querySelector('.price-item-checkbox-mobile');
+                    if (cb) cb.setAttribute('data-prices', discPricesJson);
+                    const priceValEl = card.querySelector('.price-value');
+                    if (priceValEl) priceValEl.setAttribute('data-prices', discPricesJson);
+                    const waBtn = card.querySelector('.mobile-wa-btn');
+                    if (waBtn) {
+                        waBtn.setAttribute('data-prices', discPricesJson);
+                        const sName = waBtn.getAttribute('data-service') || '';
+                        const msg = buildAllPricesMsg(sName, discPrices);
+                        waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+                    }
+
+                    updateMobileCardPrice(card, currentMobileCol);
+                });
+            }
+
+            // Aplicar descuentos en tiempo real
+            applyRealtimeDiscounts();
 
             // --- ESTADO DE SELECCIÓN MÚLTIPLE (CARRITO) ---
             const selectedServices = new Map();
@@ -541,11 +778,12 @@
                     multiPrimaryTotalEl.textContent = formattedPrimary;
                 }
 
+                const promoNote = (activeDiscount > 0) ? ` <span class="text-xs text-amber-300 font-bold ml-1.5">(${activeDiscount}% OFF aplicado)</span>` : '';
                 if (multiTotalsSummaryEl) {
                     if (columnasPago && columnasPago.length > 1) {
-                        multiTotalsSummaryEl.innerHTML = `Total est. ${primaryCol}: <span class="text-green-400" id="multi-primary-total">${formattedPrimary}</span>`;
+                        multiTotalsSummaryEl.innerHTML = `Total est. ${primaryCol}: <span class="text-green-400" id="multi-primary-total">${formattedPrimary}</span>${promoNote}`;
                     } else {
-                        multiTotalsSummaryEl.innerHTML = `Total est.: <span class="text-green-400" id="multi-primary-total">${formattedPrimary}</span>`;
+                        multiTotalsSummaryEl.innerHTML = `Total est.: <span class="text-green-400" id="multi-primary-total">${formattedPrimary}</span>${promoNote}`;
                     }
                 }
 
@@ -565,6 +803,10 @@
                         msg += `• ${item.service}${colStr}\n`;
                     });
 
+                    if (activeDiscount > 0 && promoData && promoData.titulo) {
+                        msg += `\n🔥 Promo aplicada: ${activeDiscount}% OFF por reserva anticipada (${promoData.titulo})\n`;
+                    }
+
                     msg += `\nTotal estimado ${primaryCol}: ${formatARS(totalsByCol[primaryCol])}\n`;
                     columnasPago.forEach(col => {
                         if (col !== primaryCol) {
@@ -580,6 +822,9 @@
                         const pStr = pVal && pVal !== '-' ? ` (${pVal})` : '';
                         msg += `• ${item.service}${pStr}\n`;
                     });
+                    if (activeDiscount > 0 && promoData && promoData.titulo) {
+                        msg += `\n🔥 Promo aplicada: ${activeDiscount}% OFF por reserva anticipada (${promoData.titulo})\n`;
+                    }
                     msg += `\nTotal estimado: ${formattedPrimary}\n¿Qué turnos tienen disponibles?`;
                 }
 
@@ -800,26 +1045,16 @@
                     this.classList.add('active', 'bg-primary', 'text-white', 'shadow-primary/30');
                     
                     document.querySelectorAll('.price-item-card').forEach(card => {
-                        const priceValEl = card.querySelector('.price-value');
+                        updateMobileCardPrice(card, colName);
                         const badgeEl = card.querySelector('.price-method-badge');
-                        const waBtn = card.querySelector('.mobile-wa-btn');
-                        if (!priceValEl) return;
-                        
-                        let prices = {};
-                        try {
-                            const rawPrices = priceValEl.getAttribute('data-prices') || (waBtn ? waBtn.getAttribute('data-prices') : '') || '{}';
-                            prices = JSON.parse(rawPrices);
-                        } catch(err) {
-                            console.error('Error parsing prices JSON:', err);
-                        }
-                        
-                        const colClean = colKey.toLowerCase().replace(/ /g, '_');
-                        const colNoAccents = colName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/ /g, '_');
-                        const priceStr = prices[colClean] || prices[colNoAccents] || prices[colName.toLowerCase()] || prices[colName] || '-';
-                        priceValEl.textContent = priceStr;
                         if (badgeEl) badgeEl.textContent = colName;
                         
+                        const waBtn = card.querySelector('.mobile-wa-btn');
                         if (waBtn) {
+                            let prices = {};
+                            try {
+                                prices = JSON.parse(card.getAttribute('data-prices') || '{}');
+                            } catch(err) {}
                             const serviceName = waBtn.getAttribute('data-service') || '';
                             const msgText = buildAllPricesMsg(serviceName, prices);
                             waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`;

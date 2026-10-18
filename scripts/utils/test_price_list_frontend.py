@@ -298,6 +298,78 @@ def run_tests():
         "El script JS debe incluir el encabezado compuesto para múltiples tratamientos"
     print("  ✅ Selección múltiple verificada: checkboxes en desktop/mobile, sticky bar z-[150] y botones de fila sincronizados al carrito.")
 
+    # -------------------------------------------------------------------------
+    # TEST 7: Promoción por Fecha / Jornada (Banner y Precios Tachados Dinámicos)
+    # -------------------------------------------------------------------------
+    print("\n[TEST 7] Verificando Banner de Jornada y Precios Tachados por Promoción...")
+    ctx_promo = build_base_context()
+    sample_prices = build_sample_price_list()
+    sample_prices["promocion_fecha"] = {
+        "titulo": "Jornada Láser 17 de Noviembre",
+        "activa": True,
+        "escalas": [
+            {
+                "hasta": "2026-10-27",
+                "hasta_display": "27 de Octubre de 2026",
+                "descuento": 30,
+                "label": "30% OFF Anticipado"
+            },
+            {
+                "hasta": "2026-11-15",
+                "hasta_display": "15 de Noviembre de 2026",
+                "descuento": 15,
+                "label": "15% OFF"
+            }
+        ]
+    }
+    ctx_promo["web_content"]["lista_precios"] = sample_prices
+    html_promo = template.render(**ctx_promo)
+
+    # 7.A: Banner de Jornada / Evento
+    assert 'id="promo-banner-container"' in html_promo, "Debe existir el contenedor #promo-banner-container cuando hay promoción activa"
+    assert 'Jornada Láser 17 de Noviembre' in html_promo, "Debe mostrar el título de la jornada en el banner"
+    assert 'Evento Especial' in html_promo, "Debe incluir la etiqueta 'Evento Especial'"
+    assert 'id="promo-active-badge"' in html_promo, "Debe incluir el badge animado #promo-active-badge"
+    assert 'id="promo-scales-list"' in html_promo, "Debe incluir la lista de escalas #promo-scales-list"
+    assert 'data-until="2026-10-27"' in html_promo, "Debe incluir data-until en la píldora de la escala 1"
+    assert 'data-discount="30"' in html_promo, "Debe incluir data-discount en la píldora de la escala 1"
+    assert 'data-label="30% OFF Anticipado"' in html_promo, "Debe incluir data-label en la píldora de la escala 1"
+    assert 'Hasta el 27 de Octubre de 2026' in html_promo, "Debe mostrar 'Hasta el 27 de Octubre de 2026'"
+    assert '30% OFF' in html_promo, "Debe mostrar '30% OFF'"
+    assert 'data-until="2026-11-15"' in html_promo, "Debe incluir data-until en la píldora de la escala 2"
+    assert 'data-discount="15"' in html_promo, "Debe incluir data-discount en la píldora de la escala 2"
+    assert 'Hasta el 15 de Noviembre de 2026' in html_promo, "Debe mostrar 'Hasta el 15 de Noviembre de 2026'"
+    assert '15% OFF' in html_promo, "Debe mostrar '15% OFF'"
+
+    # 7.B: Atributos para JavaScript en filas y tarjetas
+    assert 'data-regular-prices=' in html_promo, "Las filas y tarjetas deben preservar sus precios base en data-regular-prices"
+    assert 'data-regular-price=' in html_promo, "Las celdas desktop deben incluir data-regular-price"
+
+    # 7.C: Script con evaluación dinámica de fechas y recálculo en tiempo real
+    assert 'const promoData =' in html_promo, "El script JS debe recibir promoData desde Jinja"
+    assert 'todayStr <=' in html_promo or 'todayStr <= esc.hasta' in html_promo, "El script JS debe comparar todayStr con esc.hasta"
+    assert 'activeDiscount =' in html_promo, "El script JS debe calcular activeDiscount"
+    assert 'function applyRealtimeDiscounts' in html_promo, "El script JS debe definir applyRealtimeDiscounts"
+    assert 'function updateMobileCardPrice' in html_promo, "El script JS debe definir updateMobileCardPrice"
+    assert 'function getDiscountedPricesObject' in html_promo, "El script JS debe definir getDiscountedPricesObject"
+    assert 'line-through' in html_promo, "El script JS debe contener la clase line-through para precios tachados"
+    assert 'text-emerald-600' in html_promo, "El script JS debe formatear los precios con descuento en verde esmeralda"
+    assert 'OFF aplicado' in html_promo, "El script JS debe añadir el aviso de descuento aplicado en el total del carrito"
+    assert 'Promo aplicada:' in html_promo, "El script JS debe inyectar la línea de promoción en el mensaje de WhatsApp"
+
+    # 7.D: Ausencia cuando la promo está inactiva o ausente
+    ctx_inactive = build_base_context()
+    inactive_prices = build_sample_price_list()
+    inactive_prices["promocion_fecha"] = {
+        "titulo": "Jornada Pasada",
+        "activa": False,
+        "escalas": []
+    }
+    ctx_inactive["web_content"]["lista_precios"] = inactive_prices
+    html_inactive = template.render(**ctx_inactive)
+    assert 'id="promo-banner-container"' not in html_inactive, "No debe renderizar #promo-banner-container si activa=False"
+    print("  ✅ Banner de Jornada, píldoras de escalas, lógica JS de tachados y retrocompatibilidad verificadas al 100%.")
+
     print("\n" + "=" * 75)
     print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1 PASARON CON ÉXITO (100% PASS)")
     print("=" * 75)

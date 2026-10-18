@@ -177,6 +177,22 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** Permitir a los negocios de servicios (estética, depilación, consultorios, talleres) crear campañas de reserva anticipada por WhatsApp con fechas y porcentajes validados, protegiendo la agenda y eliminando ambigüedades en la interpretación de fechas y precios.
 - **Impacto:** Apertura comercial para promociones escalonadas (*early-bird*) gestionadas 100% por WhatsApp con vista previa obligatoria y freno de parada de emergencia.
 
-
-
-
+## [17/10/2026] — Implementación de Banner de Jornada y Precios Tachados en Tiempo Real (Frontend Fase 1)
+- **Decisión:**
+  1. En `templates/client_template.html`, se implementó el contenedor responsivo `#promo-banner-container` en la sección `#precios`, renderizado condicionalmente cuando `lista_precios.promocion_fecha` está activa:
+     - Muestra el encabezado de jornada (ícono de megáfono, título y badge `PROMO ACTIVA` o `PRÓXIMAMENTE`).
+     - Despliega las tarjetas/píldoras interactivas de escalas (`.promo-scale-pill`) con fechas límite legibles (`hasta_display`), porcentaje de descuento y estado en tiempo real.
+  2. En el bundle JavaScript de la plantilla, se diseñó la lógica reactiva en el cliente:
+     - Compara la fecha actual (`new Date()` en formato local `YYYY-MM-DD`) contra la fecha límite de cada escala (`esc.hasta`).
+     - Detecta automáticamente la escala vigente hoy, destacando su píldora con borde esmeralda, fondo enriquecido y el indicador animado `¡ACTIVO HOY!`.
+     - Si la fecha límite expiró, marca la píldora como finalizada (`opacity-50 line-through`); si la fecha es futura, la mantiene en espera informativa.
+  3. Precios tachados y descuentos dinámicos:
+     - **Tabla Desktop:** Para cada celda de precio, renderiza el precio regular tachado (`line-through opacity-60 text-xs`) y calcula el valor promocional destacado en negrita esmeralda (`text-emerald-600 font-bold`) acompañado del badge `-X% OFF`.
+     - **Tarjetas Mobile:** Aplica idéntico tratamiento en las filas móviles y se recalcula reactivamente al conmutar entre pestañas de modalidades de pago (Efectivo / Transferencia / Tarjeta).
+  4. Sincronización con el Carrito Multi-Servicio (`#price-multi-bar` z-[150]):
+     - Las sumas estimadas de los tratamientos seleccionados computan directamente los valores promocionales con descuento aplicado.
+     - El generador de mensaje para WhatsApp desglosa los servicios con sus importes bonificados e incluye una línea destacada con la jornada y el descuento de reserva anticipada aplicado.
+  5. Retrocompatibilidad: El template degrada de forma 100% limpia y sin errores JavaScript cuando un cliente no tiene lista de precios o no tiene promociones por fecha configuradas.
+  6. Se amplió la suite `scripts/utils/test_price_list_frontend.py` incorporando el Test 7 integral (100% PASS), verificado y aprobado formalmente con balance estricto de tags Jinja2 y cero regresiones.
+- **Razón:** Maximizar la conversión de clientes finales visibilizando de inmediato el beneficio de la reserva anticipada (urgencia visual mediante precios tachados) sin obligar al usuario a iniciar la conversación por WhatsApp para conocer el descuento real.
+- **Impacto:** Experiencia visual de alta gama en la web pública del cliente con sincronización total entre banner, tabla, pestañas móviles, carrito y mensaje de WhatsApp.
