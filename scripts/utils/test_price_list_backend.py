@@ -139,25 +139,27 @@ Corte y barba: $20.000"""
 
     # 4B: Desde MAIN_MENU seleccionar MAIN_PRECIOS transiciona a WAITING_FOR_PRICE_LIST si no hay lista previa
     bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
         bot_engine.procesar_mensaje(test_wa, "main_precios", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PRICE_LIST, f"Estado incorrecto: {state['estado']}"
-        mock_send_msg.assert_called_once()
-        msg_text = mock_send_msg.call_args[0][1]
+        mock_send_btns.assert_called_once()
+        msg_text = mock_send_btns.call_args[0][1]
         assert "Actualización de Lista de Precios" in msg_text
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
     # 4C: Retrocompatibilidad: EDIT_MENU -> edit_precios llama a mostrar_menu_precios
     bot_engine.clear_user_state(test_wa)
     bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
 
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
         bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PRICE_LIST, f"Estado incorrecto: {state['estado']}"
-        mock_send_msg.assert_called_once()
-        msg_text = mock_send_msg.call_args[0][1]
+        mock_send_btns.assert_called_once()
+        msg_text = mock_send_btns.call_args[0][1]
         assert "Actualización de Lista de Precios" in msg_text
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
     # 4D: Verificar que EDIT_MENU ahora contiene 9 opciones y no incluye EDIT_PRECIOS
     bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
@@ -186,7 +188,7 @@ Corte y barba: $20.000"""
         buttons_sent = b_args[2]
         assert "🌐 *Tu Página Web:*" in msg_text
         assert "https://estetica-sol.tuweblista.com.ar" in msg_text
-        assert any(b["id"] == "btn_menu" and b["title"] == "📱 Menú Principal" for b in buttons_sent)
+        assert any(b["id"] == "btn_menu" and b["title"] in ["📱 Menú Principal", "📱 Volver al Menú"] for b in buttons_sent)
         assert all(len(b["title"]) <= 20 for b in buttons_sent)
 
     # 4F: Probar con custom_domain y variantes textuales ("ver mi página web", "ver web", "1")
@@ -441,12 +443,14 @@ Corte y barba: $20.000"""
     bot_engine.clear_user_state(test_wa)
     bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
 
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_sin_lista):
         bot_engine.procesar_mensaje(test_wa, "main_precios", "Tester")
-        msg_sin = mock_send_msg.call_args[0][1]
+        mock_send_btns.assert_called_once()
+        msg_sin = mock_send_btns.call_args[0][1]
         assert "Ya tenés una lista de precios publicada" not in msg_sin
         assert "Actualización de Lista de Precios" in msg_sin
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
     print("  ✅ Eliminación de lista de precios, retorno a Panel de Control y adaptación del menú de precios verificadas.")
 
@@ -577,46 +581,50 @@ Corte y barba: $20.000"""
     bot_engine.clear_user_state(test_wa)
     bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_MENU_OPTION)
     
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
         
         bot_engine.procesar_mensaje(test_wa, "promo_fecha_start", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_TITLE
-        assert "Paso 1 de 4" in mock_send_msg.call_args[0][1]
+        assert "Paso 1 de 4" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
         
     # 10D. Paso 1: Título del Evento o Jornada
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
         bot_engine.procesar_mensaje(test_wa, "Jornada Láser 17 de Noviembre", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DISCOUNT_1
         assert state["temp_data"]["promo_title"] == "Jornada Láser 17 de Noviembre"
-        assert "Paso 2 de 4" in mock_send_msg.call_args[0][1]
+        assert "Paso 2 de 4" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
     # 10E. Paso 2: Descuento Tramo 1 con validación
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
         # Input inválido
         bot_engine.procesar_mensaje(test_wa, "cien por ciento", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DISCOUNT_1
-        assert "porcentaje válido" in mock_send_msg.call_args[0][1]
+        assert "porcentaje válido" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
         
         # Input válido: 30
         bot_engine.procesar_mensaje(test_wa, "30%", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_1
         assert state["temp_data"]["promo_desc_1"] == 30
-        assert "Paso 3 de 4" in mock_send_msg.call_args[0][1]
-        assert "Escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):" in mock_send_msg.call_args[0][1]
+        assert "Paso 3 de 4" in mock_send_btns.call_args[0][1]
+        assert "Escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
     # 10F. Paso 3: Fecha Límite Tramo 1 y Botones Tramo 2 (<= 20 chars)
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
-         patch("bot_engine.send_whatsapp_buttons") as mock_buttons:
+    with patch("bot_engine.send_whatsapp_buttons") as mock_buttons:
         # Input inválido
         bot_engine.procesar_mensaje(test_wa, "mañana pasado", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_1
-        assert "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):" in mock_send_msg.call_args[0][1]
+        assert "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):" in mock_buttons.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_buttons.call_args[0][2])
         
         # Input válido: 27/10/2026
         bot_engine.procesar_mensaje(test_wa, "27/10/2026", "Tester")
@@ -624,7 +632,6 @@ Corte y barba: $20.000"""
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_TIER2_CHOICE
         assert state["temp_data"]["promo_date_1_iso"] == "2026-10-27"
         
-        mock_buttons.assert_called_once()
         b_args = mock_buttons.call_args[0]
         btns = b_args[2]
         assert len(btns) == 2
@@ -632,24 +639,27 @@ Corte y barba: $20.000"""
             assert len(b["title"]) <= 20, f"Título de botón supera 20 chars: {b['title']}"
 
     # 10G. Paso 4 (Flujo 2 tramos): Tramo 2 con Descuento y Fecha
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
         bot_engine.procesar_mensaje(test_wa, "promo_t2_yes", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DISCOUNT_2
-        assert "Paso 4 de 4" in mock_send_msg.call_args[0][1]
+        assert "Paso 4 de 4" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
         bot_engine.procesar_mensaje(test_wa, "15", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_2
         assert state["temp_data"]["promo_desc_2"] == 15
-        assert "Debe ser posterior al 27 de Octubre de 2026 (Por ejemplo: 15/11/2026):" in mock_send_msg.call_args[0][1]
+        assert "Debe ser posterior al 27 de Octubre de 2026 (Por ejemplo: 15/11/2026):" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
         # Input inválido
         bot_engine.procesar_mensaje(test_wa, "semana próxima", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_2
-        assert "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 15/11/2026):" in mock_send_msg.call_args[0][1]
+        assert "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 15/11/2026):" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
     with patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
@@ -777,14 +787,16 @@ Corte y barba: $20.000"""
     # ---------------------------------------------------------
     print("\n[TEST 11] Verificando leyendas de cancelación y reseteo universal en estados de edición...")
     
-    # 11A. Verificar que los prompts de edición informan cómo cancelar
+    # 11A. Verificar que los prompts de edición informan cómo cancelar y envían btn_volver_menu
     bot_engine.clear_user_state(test_wa)
     bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
         bot_engine.procesar_mensaje(test_wa, "edit_titulo", "Tester")
-        assert mock_send_msg.called
-        prompt_txt = mock_send_msg.call_args[0][1]
+        assert mock_send_btns.called
+        prompt_txt = mock_send_btns.call_args[0][1]
         assert "cancelar" in prompt_txt and "volver" in prompt_txt
+        btns_sent = mock_send_btns.call_args[0][2]
+        assert any(b["id"] == "btn_menu" and b["title"] == "📱 Volver al Menú" for b in btns_sent)
         assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_TITLE
 
     # Verificar prompts de subtítulo, ubicación, horarios, whatsapp, email, instagram
@@ -798,11 +810,13 @@ Corte y barba: $20.000"""
     ]
     for cmd, expected_state in edit_test_cases:
         bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
-        with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
             bot_engine.procesar_mensaje(test_wa, cmd, "Tester")
-            assert mock_send_msg.called
-            msg_txt = mock_send_msg.call_args[0][1]
+            assert mock_send_btns.called
+            msg_txt = mock_send_btns.call_args[0][1]
             assert "cancelar" in msg_txt and "volver" in msg_txt, f"Prompt para {cmd} no contiene leyenda de salida"
+            btns_sent = mock_send_btns.call_args[0][2]
+            assert any(b["id"] == "btn_menu" and b["title"] == "📱 Volver al Menú" for b in btns_sent)
             assert bot_engine.get_user_state(test_wa)["estado"] == expected_state
 
     # 11B. Cancelar en WAITING_FOR_TITLE no modifica BD, limpia sesión y regresa al Panel de Control
@@ -841,6 +855,36 @@ Corte y barba: $20.000"""
         mock_send_list.assert_called_once()
         assert mock_send_list.call_args[0][4] == "Panel de Control"
         assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    # 11E. Verificar que retry en WAITING_FOR_DOMAIN_NAME (dominio ocupado) envía btn_volver_menu
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_DOMAIN_NAME)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("subprocess.run") as mock_sub:
+        mock_sub.return_value = MagicMock(stdout="Dominio ya registrado")
+        bot_engine.procesar_mensaje(test_wa, "google.com.ar", "Tester")
+        assert mock_send_btns.called
+        assert any(b["id"] == "btn_menu" and b["title"] == "📱 Volver al Menú" for b in mock_send_btns.call_args[0][2])
+
+    # 11F. Verificar que retry en WAITING_FOR_TRANSFER_PHONE con número inválido envía btn_volver_menu
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_TRANSFER_PHONE)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "invalido", "Tester")
+        assert mock_send_btns.called
+        assert any(b["id"] == "btn_menu" and b["title"] == "📱 Volver al Menú" for b in mock_send_btns.call_args[0][2])
+
+    # 11G. Verificar que retry en WAITING_FOR_PRICE_LIST con texto sin precios envía btn_volver_menu
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_LIST)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "hola que tal esto no tiene precios", "Tester")
+        assert mock_send_btns.called
+        assert any(b["id"] == "btn_menu" and b["title"] == "📱 Volver al Menú" for b in mock_send_btns.call_args[0][2])
+
+    # 11H. Verificar que WAITING_FOR_RECEIPT envía btn_volver_menu
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_RECEIPT)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "comprobante", "Tester")
+        assert mock_send_btns.called
+        assert any(b["id"] == "btn_menu" and b["title"] == "📱 Volver al Menú" for b in mock_send_btns.call_args[0][2])
 
     print("  ✅ Leyendas de cancelación y reseteo sin modificación de BD verificadas al 100%.")
 

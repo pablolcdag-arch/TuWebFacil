@@ -178,7 +178,8 @@ def test_option1_subdominio_flow():
         assert bot_engine.get_user_state(test_phone)["estado"] == bot_engine.IDLE
 
         sent_messages = []
-        with patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)):
+        with patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)), \
+             patch.object(bot_engine, "send_whatsapp_buttons", side_effect=lambda w, m, b: sent_messages.append(m)):
             bot_engine.procesar_mensaje(test_phone, user_input, "Juan Perez")
 
         # Verificar estado
@@ -228,7 +229,8 @@ def test_option2_dominio_flow():
         assert bot_engine.get_user_state(test_phone)["estado"] == bot_engine.IDLE
 
         sent_messages = []
-        with patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)):
+        with patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)), \
+             patch.object(bot_engine, "send_whatsapp_buttons", side_effect=lambda w, m, b: sent_messages.append(m)):
             bot_engine.procesar_mensaje(test_phone, user_input, "Juan Perez")
 
         # Verificar transición inicial a WAITING_FOR_DOMAIN_NAME
@@ -245,7 +247,8 @@ def test_option2_dominio_flow():
     mock_whois_available = MagicMock(stdout="El dominio no se encuentra registrado en NIC Argentina")
     sent_messages.clear()
     with patch("subprocess.run", return_value=mock_whois_available), \
-         patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)):
+         patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)), \
+         patch.object(bot_engine, "send_whatsapp_buttons", side_effect=lambda w, m, b: sent_messages.append(m)):
         bot_engine.procesar_mensaje(test_phone, "panaderiasanpedro", "Juan Perez")
 
     # Debe pasar a WAITING_FOR_RECEIPT con dominio, plan y monto
@@ -291,7 +294,8 @@ def test_receipt_submission_flow():
     sent_messages = []
     with patch.object(bot_engine, "supabase", mock_supabase), \
          patch.object(bot_engine, "download_whatsapp_media", return_value=True), \
-         patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)):
+         patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)), \
+         patch.object(bot_engine, "send_whatsapp_buttons", side_effect=lambda w, m, b: sent_messages.append(m)):
 
         bot_engine.procesar_mensaje(
             test_phone,

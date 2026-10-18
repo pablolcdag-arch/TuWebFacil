@@ -54,6 +54,10 @@ WAITING_FOR_PROMO_DISCOUNT_2 = "WAITING_FOR_PROMO_DISCOUNT_2"
 WAITING_FOR_PROMO_DATE_2 = "WAITING_FOR_PROMO_DATE_2"
 CONFIRM_PROMO_DRAFT = "CONFIRM_PROMO_DRAFT"
 
+# Botón interactivo universal para evitar dead-ends
+BTN_VOLVER_MENU = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
+btn_volver_menu = BTN_VOLVER_MENU
+
 
 def get_db_path():
     """Retorna la ruta absoluta a messages.db."""
@@ -438,7 +442,7 @@ def mostrar_menu_precios(wa_id):
                "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
                "¿Cómo preferís enviármela?\n\n"
                "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
-        send_whatsapp_message(wa_id, msg)
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
         set_user_state(wa_id, WAITING_FOR_PRICE_LIST)
 
 def detener_promocion_activa(wa_id, nombre):
@@ -696,14 +700,14 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                "Para renovar tu mes activo, transferí $2.000 al siguiente Alias:\n"
                "*tuweblista*\n\n"
                "Una vez que transfieras, envianos la foto del comprobante por acá y lo activaremos en el día.")
-        send_whatsapp_message(wa_id, msg)
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
         return
 
     if is_trial_dominio:
         set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME, {"plan": "custom_domain", "monto": 10500})
         msg = ("¡Excelente! 💎 Vamos a registrar tu propio dominio .com.ar.\n\n"
                "Escribí el nombre que te gustaría tener (por ejemplo: 'minegocio.com.ar' o 'minegocio'):")
-        send_whatsapp_message(wa_id, msg)
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
         return
 
     # 1.7 Interceptar intención de reactivación de web pausada ("reactivar mi web", "reactivar")
@@ -713,7 +717,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                "Para volver a ponerla online hoy mismo por solo $2.000/mes (o con dominio .com.ar propio por $10.500), transferí el monto al siguiente Alias:\n"
                "*tuweblista*\n\n"
                "Una vez que transfieras, envianos la foto del comprobante por acá y la activaremos de inmediato. 🚀")
-        send_whatsapp_message(wa_id, msg)
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
         temp_data = {"accion": "reactivacion", "monto": 2000}
         if web_info:
             if "slug" in web_info:
@@ -767,12 +771,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                     if parsed and parsed.get("items"):
                         procesar_borrador_lista_precios(wa_id, parsed, nombre)
                     else:
-                        send_whatsapp_message(wa_id, "⚠️ No pude detectar una lista de precios válida en el documento. Podés escribir *soporte* para que te ayudemos a cargarla, o probar enviándola en formato Excel, CSV o texto.")
+                        send_whatsapp_buttons(wa_id, "⚠️ No pude detectar una lista de precios válida en el documento. Podés escribir *soporte* para que te ayudemos a cargarla, o probar enviándola en formato Excel, CSV o texto.", btn_volver_menu)
                 except Exception as e:
                     logging.error(f"Error parseando documento de precios: {e}")
-                    send_whatsapp_message(wa_id, "❌ No pudimos procesar el archivo. Podés escribir *soporte* para que lo carguemos juntos o probar enviarlo en formato Excel o CSV.")
+                    send_whatsapp_buttons(wa_id, "❌ No pudimos procesar el archivo. Podés escribir *soporte* para que lo carguemos juntos o probar enviarlo en formato Excel o CSV.", btn_volver_menu)
             else:
-                send_whatsapp_message(wa_id, "❌ Hubo un error al descargar el archivo. Por favor intentá nuevamente.")
+                send_whatsapp_buttons(wa_id, "❌ Hubo un error al descargar el archivo. Por favor intentá nuevamente.", btn_volver_menu)
             return
         else:
             send_whatsapp_message(wa_id, "📄 Recibimos tu documento. Si querías actualizar tu lista de precios, primero seleccioná *Lista de Precios* en el menú de edición.")
@@ -803,8 +807,9 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 except Exception as e:
                     logging.error(f"Error guardando pending_payment en BD: {e}")
             
-            msg = "✅ Recibimos el comprobante muchas gracias, en el transcurso del día recibirás una notificación con el 'Pago verificado'. Tu web va a seguir activa, no te preocupes."
-            send_whatsapp_message(wa_id, msg)
+            msg = ("✅ Recibimos el comprobante muchas gracias, en el transcurso del día recibirás una notificación con el 'Pago verificado'. Tu web va a seguir activa, no te preocupes.\n\n"
+                   "📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, IDLE, {})
             
             logging.info(f"NUEVO PAGO: {nombre} ({wa_id}) mandó un comprobante.")
@@ -822,12 +827,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                     if parsed and parsed.get("items"):
                         procesar_borrador_lista_precios(wa_id, parsed, nombre)
                     else:
-                        send_whatsapp_message(wa_id, "⚠️ No pude detectar precios legibles en la imagen. Probá con una foto más nítida o pegando el texto.")
+                        send_whatsapp_buttons(wa_id, "⚠️ No pude detectar precios legibles en la imagen. Probá con una foto más nítida o pegando el texto.", btn_volver_menu)
                 except Exception as e:
                     logging.error(f"Error procesando imagen de precios: {e}")
-                    send_whatsapp_message(wa_id, "❌ Error al procesar la imagen de precios.")
+                    send_whatsapp_buttons(wa_id, "❌ Error al procesar la imagen de precios.", btn_volver_menu)
             else:
-                send_whatsapp_message(wa_id, "❌ Error al descargar la imagen.")
+                send_whatsapp_buttons(wa_id, "❌ Error al descargar la imagen.", btn_volver_menu)
             return
         else:
             # Es una foto para la web
@@ -898,17 +903,18 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                        f"👉 {web_url}\n\n"
                        f"💡 _Tip: Copiá este enlace para enviárselo a tus clientes o colocarlo en el perfil de tus redes sociales._\n\n"
                        f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
-                buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
                 send_whatsapp_buttons(wa_id, msg, buttons)
             else:
                 msg = ("⚠️ No encontramos una página web activa vinculada a tu número de teléfono.\n\n"
                        "📲 _Tocá el botón abajo o escribí *menu* para ver las opciones disponibles._")
-                buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
                 send_whatsapp_buttons(wa_id, msg, buttons)
         elif texto_limpio in ["main_precios", "precios", "promos", "promociones", "lista de precios"]:
             mostrar_menu_precios(wa_id)
         elif texto_limpio == "main_soporte" or texto_limpio == "main_contact":
-            send_whatsapp_message(wa_id, "Escribí el mensaje que le querés enviar al administrador.\n\n⚠️ *Aviso*: Esto no es un chat en vivo, pero tu mensaje quedará registrado y te responderemos por este mismo medio en el transcurso del día.\n\n💡 _Si no querés enviar ningún mensaje ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            msg = ("Escribí el mensaje que le querés enviar al administrador.\n\n⚠️ *Aviso*: Esto no es un chat en vivo, pero tu mensaje quedará registrado y te responderemos por este mismo medio en el transcurso del día.\n\n💡 _Si no querés enviar ningún mensaje ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_ADMIN_MESSAGE)
 
         elif texto_limpio == "main_transfer":
@@ -916,7 +922,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    "Para transferir la administración de esta web a otro número, escribí acá abajo el nuevo número de WhatsApp (Ej: 1131234567 o +5491131234567).\n\n"
                    "⚠️ Importante: Una vez confirmada la transferencia, perderás acceso a este menú.\n\n"
                    "💡 _Si no querés transferirla ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_TRANSFER_PHONE)
 
         elif texto_limpio == "main_domain":
@@ -924,7 +930,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    "Escribí acá abajo el nombre que te gustaría tener para tu página (Ej: mipanaderia, estudiojuridico, etc).\n\n"
                    "No hace falta que escribas el '.com.ar', nosotros lo agregamos y verificamos si está disponible en NIC Argentina al instante.\n\n"
                    "💡 _Si preferís hacerlo en otro momento, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME)
             
         elif texto_limpio in ["main_editar", "editar", "2"]:
@@ -962,12 +968,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         if texto_limpio == "edit_titulo" or texto_limpio == "1":
             msg = ("Escribí el nuevo Título que querés para tu web (Por ejemplo: 'Estudio Jurídico Gonzalez').\n\n"
                    "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_TITLE)
         elif texto_limpio == "edit_subtitulo" or texto_limpio == "2":
             msg = ("Escribí el nuevo *Subtítulo*\n*(Por ejemplo: 'Más de 20 años ayudando a las personas'):*\n\n"
                    "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_SUBTITLE)
         elif texto_limpio == "edit_servicios" or texto_limpio == "3":
             msg = "¿Qué servicio querés editar?"
@@ -982,12 +988,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         elif texto_limpio == "edit_location" or texto_limpio == "4":
             msg = ("Escribí la nueva Ubicación o Dirección (Por ejemplo: 'Avenida Corrientes 1000, CABA'. Mientras más exacto, mejor aparecerá en el mapa. También podés poner ciudad y provincia si no querés poner una dirección exacta).\n\n"
                    "💡 _Si no querés cambiarla ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_LOCATION)
         elif texto_limpio == "edit_schedule" or texto_limpio == "5":
             msg = ("Escribí tus *Horarios de Atención*\n*(Por ejemplo: 'Lunes a Viernes de 9 a 18hs').*\n\nSi no querés mostrar los horarios, escribí *Ocultar*.\n\n"
                    "💡 _Si no querés cambiarlos ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_SCHEDULE)
         elif texto_limpio == "edit_imagenes" or texto_limpio == "6":
             msg = ("💡 *Tamaños sugeridos:*\n"
@@ -996,7 +1002,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    "📸 *¡Es súper fácil cambiar las fotos!*\n"
                    "Simplemente *enviame la foto por este chat ahora mismo* y te preguntaremos dónde querés ubicarla.\n\n"
                    "📲 _O tocá el botón abajo si preferís volver al panel de control:_")
-            buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+            buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
             send_whatsapp_buttons(wa_id, msg, buttons)
             set_user_state(wa_id, IDLE, {})
         elif texto_limpio in ["edit_precios", "precios", "lista de precios", "7"]:
@@ -1004,18 +1010,18 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         elif texto_limpio == "edit_whatsapp":
             msg = ("Escribí el número de WhatsApp donde querés recibir las consultas de tus clientes (Ej: +54 9 1131234567 o 1131234567).\n\n"
                    "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_WHATSAPP)
 
         elif texto_limpio == "edit_email":
             msg = ("Escribí la dirección de correo electrónico que querés mostrar en la sección de contacto de tu web (Ej: info@empresa.com).\n\nSi no querés mostrar ningún correo, simplemente escribí *Ocultar*.\n\n"
                    "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_EMAIL)
         elif texto_limpio == "edit_instagram" or texto_limpio == "9":
             msg = ("Escribí tu usuario de Instagram (Ej: @minegocio) o pegá el enlace directo a tu perfil.\n\nSi no querés mostrar tu Instagram en la web, simplemente escribí *Ocultar*.\n\n"
                    "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_INSTAGRAM)
 
         elif texto_limpio == "edit_volver" or texto_limpio == "0":
@@ -1028,17 +1034,17 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         if texto_limpio == "edit_srv_1" or texto_limpio == "1":
             msg = ("Escribí el nuevo *Título* para el Servicio 1:\n\n"
                    "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 0})
         elif texto_limpio == "edit_srv_2" or texto_limpio == "2":
             msg = ("Escribí el nuevo *Título* para el Servicio 2:\n\n"
                    "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 1})
         elif texto_limpio == "edit_srv_3" or texto_limpio == "3":
             msg = ("Escribí el nuevo *Título* para el Servicio 3:\n\n"
                    "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 2})
         elif texto_limpio == "edit_volver" or texto_limpio == "0":
             set_user_state(wa_id, MAIN_MENU, {})
@@ -1053,7 +1059,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         msg = ("Excelente. Ahora escribí la *Descripción* para este servicio\n"
                "*(Por ejemplo: 'Asesoramiento legal integral personalizado'):*\n\n"
                "💡 _Si no querés cambiarla ahora, escribí *cancelar* o *volver* para regresar al menú._")
-        send_whatsapp_message(wa_id, msg)
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
         set_user_state(wa_id, "WAITING_FOR_SERVICE_DESC", current_data)
         
     elif estado_actual == "WAITING_FOR_SERVICE_DESC":
@@ -1309,7 +1315,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                        "Para registrarlo y activar tu plan profesional, transferí los $10.500 al siguiente Alias:\n"
                        "*tuweblista*\n\n"
                        "Una vez que transfieras, envianos la foto del comprobante por acá y lo activaremos.")
-                send_whatsapp_message(wa_id, msg)
+                send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
                 current_temp = get_user_state(wa_id).get("temp_data") or {}
                 current_temp["dominio"] = dominio_limpio
                 if "plan" not in current_temp:
@@ -1320,18 +1326,18 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             else:
                 msg = (f"❌ Lo sentimos, **{dominio_limpio}** ya está registrado por otra persona.\n\n"
                        "¡Escribí otro nombre para volver a intentar!")
-                send_whatsapp_message(wa_id, msg)
+                send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
                 # Sigue esperando otro nombre
         except Exception as e:
             logging.error(f"Error whois: {e}")
-            send_whatsapp_message(wa_id, "⚠️ Hubo un error temporal conectando con NIC.ar. Por favor intentá en unos minutos.")
+            send_whatsapp_buttons(wa_id, "⚠️ Hubo un error temporal conectando con NIC.ar. Por favor intentá en unos minutos.", btn_volver_menu)
 
     elif estado_actual == WAITING_FOR_TRANSFER_PHONE:
         import random
         import sqlite3
         nuevo_numero = texto_limpio.replace("+", "").replace(" ", "").replace("-", "").strip()
         if not nuevo_numero.isdigit() or len(nuevo_numero) < 10:
-            send_whatsapp_message(wa_id, "❌ El número no parece válido. Por favor ingresá solo números (Ej: 5491131234567).")
+            send_whatsapp_buttons(wa_id, "❌ El número no parece válido. Por favor ingresá solo números (Ej: 5491131234567).", btn_volver_menu)
             return
             
         codigo_mudanza = f"MUDANZA-{random.randint(1000, 9999)}"
@@ -1351,12 +1357,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    f"*{codigo_mudanza}*\n\n"
                    f"Una vez que reciba ese mensaje, la web se transferirá automáticamente.\n\n"
                    f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
-            buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+            buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
             send_whatsapp_buttons(wa_id, msg, buttons)
             set_user_state(wa_id, IDLE, {})
         except Exception as e:
             logging.error(f"Error saving transfer: {e}")
-            send_whatsapp_message(wa_id, "⚠️ Hubo un error al procesar la transferencia. Intentá nuevamente.")
+            send_whatsapp_buttons(wa_id, "⚠️ Hubo un error al procesar la transferencia. Intentá nuevamente.", btn_volver_menu)
             set_user_state(wa_id, IDLE, {})
 
     elif estado_actual == WAITING_FOR_ADMIN_MESSAGE:
@@ -1380,13 +1386,15 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         
         msg_confirm = ("✅ Tu mensaje fue enviado con éxito. En el transcurso del día un administrador revisará tu consulta y te responderá por acá.\n\n"
                        "📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
-        buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+        buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
         send_whatsapp_buttons(wa_id, msg_confirm, buttons)
         send_whatsapp_message("5491134710787", f"✉️ NUEVO MENSAJE DE {nombre} ({wa_id}):\n\n{texto}\n\nRevisá el dashboard para contestarle.")
         set_user_state(wa_id, IDLE, {})
 
     elif estado_actual == WAITING_FOR_RECEIPT:
-        send_whatsapp_message(wa_id, "📸 Por favor, enviame la foto o captura del comprobante de transferencia por acá para que podamos verificarlo.\n\n(Si querés volver al menú principal, escribí *menu*)")
+        msg = ("📸 Por favor, enviame la foto o captura del comprobante de transferencia por acá para que podamos verificarlo.\n\n"
+               "💡 _Tocá el botón abajo o escribí *menu* si preferís volver al menú principal._")
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
 
     elif estado_actual == WAITING_FOR_PRICE_LIST:
         if texto_limpio in ["quitar", "borrar", "eliminar", "ocultar"]:
@@ -1412,10 +1420,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             if parsed and parsed.get("items"):
                 procesar_borrador_lista_precios(wa_id, parsed, nombre)
             else:
-                send_whatsapp_message(wa_id, "⚠️ No pude detectar una lista de precios en el texto. Asegurate de incluir nombres de servicios y montos (por ejemplo: 'Corte $15.000 / Barba $8.000').")
+                send_whatsapp_buttons(wa_id, "⚠️ No pude detectar una lista de precios en el texto. Asegurate de incluir nombres de servicios y montos (por ejemplo: 'Corte $15.000 / Barba $8.000').", btn_volver_menu)
         except Exception as e:
             logging.error(f"Error parseando texto de precios: {e}")
-            send_whatsapp_message(wa_id, "❌ Hubo un error al procesar el texto. Por favor reintentá.")
+            send_whatsapp_buttons(wa_id, "❌ Hubo un error al procesar el texto. Por favor reintentá.", btn_volver_menu)
 
     elif estado_actual == CONFIRM_PRICE_LIST_DRAFT:
         if texto_limpio in ["confirm_prices_ok", "publicar", "si", "sí", "confirmar", "1", "ok"]:
@@ -1438,7 +1446,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                            f"Tus clientes ya pueden ver tus precios actualizados en:\n"
                            f"🔗 {public_url}\n\n"
                            f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
-                    buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                    buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
                     send_whatsapp_buttons(wa_id, msg, buttons)
                 else:
                     send_whatsapp_message(wa_id, "❌ Hubo un error al guardar tu lista de precios en la base de datos.")
@@ -1462,7 +1470,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
                    "¿Cómo preferís enviármela?\n\n"
                    "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_PRICE_LIST, {})
         elif texto_limpio in ["promo_fecha_start", "promo", "promocion", "promo por fecha", "2"]:
             web_info = obtener_web_del_cliente(wa_id)
@@ -1475,7 +1483,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    "Paso 1 de 4: ¿Qué nombre o título querés ponerle al evento o jornada?\n"
                    "(Por ejemplo: 'Jornada Láser 17 de Noviembre' o 'Jornada Especial').\n\n"
                    "💡 _Escribí *cancelar* para volver al menú anterior._")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_PROMO_TITLE, {})
         elif texto_limpio in ["promo_detener", "detener promo", "frenar promo", "pausar promo", "detener", "3"]:
             detener_promocion_activa(wa_id, nombre)
@@ -1506,12 +1514,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         set_user_state(wa_id, WAITING_FOR_PROMO_DISCOUNT_1, temp_data)
         msg = ("🎯 Paso 2 de 4: ¿De cuánto es el porcentaje de descuento inicial por reserva anticipada?\n\n"
                "Escribí solo el número (Por ejemplo: 30 para 30% OFF):")
-        send_whatsapp_message(wa_id, msg)
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
 
     elif estado_actual == WAITING_FOR_PROMO_DISCOUNT_1:
         clean_num = re.sub(r'[^\d]', '', texto)
         if not clean_num or not (1 <= int(clean_num) <= 99):
-            send_whatsapp_message(wa_id, "⚠️ Por favor, ingresá un porcentaje válido entre 1 y 99 (por ejemplo: 30 para 30% OFF):")
+            send_whatsapp_buttons(wa_id, "⚠️ Por favor, ingresá un porcentaje válido entre 1 y 99 (por ejemplo: 30 para 30% OFF):", btn_volver_menu)
             return
         desc_1 = int(clean_num)
         current_data = get_user_state(wa_id).get("temp_data", {})
@@ -1519,12 +1527,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         set_user_state(wa_id, WAITING_FOR_PROMO_DATE_1, current_data)
         msg = (f"⏳ Paso 3 de 4: ¿Hasta qué fecha es válido ese {desc_1}% OFF inicial?\n\n"
                "Escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):")
-        send_whatsapp_message(wa_id, msg)
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
 
     elif estado_actual == WAITING_FOR_PROMO_DATE_1:
         parsed_date = parse_promo_date(texto)
         if not parsed_date:
-            send_whatsapp_message(wa_id, "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):")
+            send_whatsapp_buttons(wa_id, "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):", btn_volver_menu)
             return
         current_data = get_user_state(wa_id).get("temp_data", {})
         current_data["promo_date_1_iso"] = parsed_date["iso"]
@@ -1548,7 +1556,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             set_user_state(wa_id, WAITING_FOR_PROMO_DISCOUNT_2, current_data)
             msg = (f"🎯 Paso 4 de 4: ¿De cuánto es el porcentaje de descuento para el 2do tramo?\n\n"
                    f"Debe ser menor al {desc_1}% (Por ejemplo: 15 para 15% OFF):")
-            send_whatsapp_message(wa_id, msg)
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
         else:
             buttons = [
                 {"id": "PROMO_T2_YES", "title": "➕ Sí, agregar tramo"},
@@ -1559,7 +1567,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
     elif estado_actual == WAITING_FOR_PROMO_DISCOUNT_2:
         clean_num = re.sub(r'[^\d]', '', texto)
         if not clean_num or not (1 <= int(clean_num) <= 99):
-            send_whatsapp_message(wa_id, "⚠️ Por favor, ingresá un porcentaje válido entre 1 y 99 (por ejemplo: 15 para 15% OFF):")
+            send_whatsapp_buttons(wa_id, "⚠️ Por favor, ingresá un porcentaje válido entre 1 y 99 (por ejemplo: 15 para 15% OFF):", btn_volver_menu)
             return
         desc_2 = int(clean_num)
         current_data = get_user_state(wa_id).get("temp_data", {})
@@ -1568,12 +1576,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         date_1_display = current_data.get("promo_date_1_display", "")
         msg = (f"⏳ ¿Hasta qué fecha límite es válido este {desc_2}% OFF?\n\n"
                f"Debe ser posterior al {date_1_display} (Por ejemplo: 15/11/2026):")
-        send_whatsapp_message(wa_id, msg)
+        send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
 
     elif estado_actual == WAITING_FOR_PROMO_DATE_2:
         parsed_date = parse_promo_date(texto)
         if not parsed_date:
-            send_whatsapp_message(wa_id, "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 15/11/2026):")
+            send_whatsapp_buttons(wa_id, "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 15/11/2026):", btn_volver_menu)
             return
         current_data = get_user_state(wa_id).get("temp_data", {})
         current_data["promo_date_2_iso"] = parsed_date["iso"]
@@ -1596,10 +1604,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                         slug = web_info.get("slug", "mi-web")
                         public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
                         msg = (f"🎉 ¡Promoción activada y publicada con éxito en tu web!\n\n"
-                               f"Tus clientes ya verán los precios tachados, el banner de jornada y los descuentos en vivo.\n\n"
-                               f"🔗 {public_url}\n\n"
-                               f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
-                        buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                                f"Tus clientes ya verán los precios tachados, el banner de jornada y los descuentos en vivo.\n\n"
+                                f"🔗 {public_url}\n\n"
+                                f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                        buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
                         send_whatsapp_buttons(wa_id, msg, buttons)
                     else:
                         send_whatsapp_message(wa_id, "❌ Hubo un error al guardar la promoción en la base de datos.")

@@ -247,3 +247,18 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   3. En `scripts/utils/test_price_list_backend.py`, se incorporó el **TEST 11** validando la presencia de las leyendas de cancelación en los mensajes iniciales y verificando la inocuidad y reseteo de sesión ante `cancelar` y `volver` (100% PASS, 11/11 tests).
 - **Razón:** Prevenir que usuarios que ingresan por curiosidad, error o que se arrepienten a mitad de un cambio queden forzados a ingresar un dato o crean que el bot quedó bloqueado sin salida.
 - **Impacto:** Experiencia conversacional transparente, guiada y libre de trampas de entrada en todos los módulos de edición del bot.
+
+## [18/10/2026] — Estandarización Universal del Botón Interactivo 'Volver al Menú' en Estados de Entrada y Reintento
+- **Decisión:**
+  1. En `bot_engine.py`, se definió el objeto canónico de botón interactivo:
+     `BTN_VOLVER_MENU = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]` (17 caracteres, respetando el límite $\le 20$ de Meta).
+  2. Se sustituyó `send_whatsapp_message` por `send_whatsapp_buttons(wa_id, msg, BTN_VOLVER_MENU)` de forma exhaustiva en:
+     - Todos los estados de edición de textos y datos generales (Título, Subtítulo, Ubicación, Horarios, WhatsApp, Email, Instagram, Servicios 1-3, Descripción, Dominio, Soporte y Transferencia).
+     - Solicitud de carga de lista de precios (`WAITING_FOR_PRICE_LIST`) y comprobante de transferencia bancaria (`WAITING_FOR_RECEIPT`).
+     - Pasos 1, 2, 3, 4 y final del asistente interactivo de promociones por fecha.
+     - Mensajes de validación defensiva y reintento (dominio ocupado, porcentaje fuera de rango, fecha no interpretable, texto de precios sin estructura y teléfono inválido).
+  3. Los usuarios en celular pueden indistintamente tipear texto libre (guardando el cambio) o tocar el botón verde `[ 📱 Volver al Menú ]` para abortar la operación en 1 solo clic sin tipear nada.
+  4. En `scripts/utils/test_price_list_backend.py`, se ampliaron los tests 4, 7, 10 y el Test 11 (11A a 11H) auditando la presencia del botón y el reseteo limpio ante `btn_menu`.
+  5. Se actualizaron los mocks de las suites auxiliares `test_day27_flow.py` y `test_paused_flow.py` para capturar tanto mensajes directos como botones interactivos (100% PASS en las 4 suites del sistema).
+- **Razón:** Reducir la fricción en celulares a un solo toque físico, permitiendo a los comerciantes cancelar o volver sin la carga cognitiva ni motriz de abrir el teclado para escribir "cancelar".
+- **Impacto:** Ergonomía móvil superior y consistencia absoluta en todo el árbol conversacional de TuWebLista.

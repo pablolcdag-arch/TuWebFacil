@@ -245,7 +245,8 @@ def test_reactivation_intent_in_bot():
 
         sent_messages = []
         with patch.object(bot_engine, "obtener_web_del_cliente", return_value={"slug": "mitienda", "website_id": "web_123"}), \
-             patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)):
+             patch.object(bot_engine, "send_whatsapp_message", side_effect=lambda w, m: sent_messages.append(m)), \
+             patch.object(bot_engine, "send_whatsapp_buttons", side_effect=lambda w, m, b: sent_messages.append(m)):
             bot_engine.procesar_mensaje(test_phone, user_input, "Ana López")
 
         # Verificar estado
