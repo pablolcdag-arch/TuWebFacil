@@ -403,6 +403,44 @@ def parse_promo_date(texto):
         logging.warning(f"Error parseando fecha '{texto}': {e}")
         return None
 
+def mostrar_menu_precios(wa_id):
+    """Muestra el submenú interactivo de gestión de precios y promociones según el estado de la web del cliente."""
+    web_info = obtener_web_del_cliente(wa_id)
+    tiene_lista = False
+    tiene_promo = False
+    if web_info and web_info.get("content"):
+        lp = web_info["content"].get("lista_precios")
+        if lp and isinstance(lp, dict) and lp.get("items"):
+            tiene_lista = True
+            if lp.get("promocion_fecha"):
+                tiene_promo = True
+
+    if tiene_lista:
+        options = [
+            {"id": "PRECIOS_ACTUALIZAR", "title": "📄 Actualizar Precios", "description": "Subir nuevo Excel, PDF o texto"},
+            {"id": "PROMO_FECHA_START", "title": "📅 Promo por Fecha", "description": "Reserva anticipada con % de descuento"}
+        ]
+        if tiene_promo:
+            options.append({"id": "PROMO_DETENER", "title": "⏹️ Detener Promo Activa", "description": "Quitar descuento y volver a precios normales"})
+        options.append({"id": "PRECIOS_QUITAR", "title": "🗑️ Quitar Lista", "description": "Eliminar la lista de precios de la web"})
+        options.append({"id": "PRECIOS_VOLVER", "title": "⬅️ Volver", "description": "Regresar al menú principal"})
+
+        msg = ("📋 *Gestión de Precios y Promociones*\n\n"
+               "Ya tenés una lista de precios publicada en tu web. Elegí qué deseás configurar:")
+        send_whatsapp_list(wa_id, msg, "Ver Opciones", options, "Precios y Promos")
+        set_user_state(wa_id, WAITING_FOR_PRICE_MENU_OPTION)
+    else:
+        msg = ("📋 *Actualización de Lista de Precios*\n\n"
+               "Podés enviarme:\n"
+               "1️⃣ Un archivo Excel (.xlsx) o CSV.\n"
+               "2️⃣ Un archivo PDF con tus precios.\n"
+               "3️⃣ Una foto nítida de tu lista o pizarra de precios.\n"
+               "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
+               "¿Cómo preferís enviármela?\n\n"
+               "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
+        send_whatsapp_message(wa_id, msg)
+        set_user_state(wa_id, WAITING_FOR_PRICE_LIST)
+
 def detener_promocion_activa(wa_id, nombre):
     """Detiene y retira la promoción por fecha activa de la web del cliente."""
     web_info = obtener_web_del_cliente(wa_id)
@@ -423,7 +461,7 @@ def detener_promocion_activa(wa_id, nombre):
                    f"🔗 Refrescá tu web: {public_url}")
             send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, MAIN_MENU, {})
-            procesar_mensaje(wa_id, "2", nombre)
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
             return True
         else:
             send_whatsapp_message(wa_id, "❌ Hubo un error al actualizar tu web en la base de datos.")
@@ -432,7 +470,7 @@ def detener_promocion_activa(wa_id, nombre):
     else:
         send_whatsapp_message(wa_id, "ℹ️ Tu lista de precios no tiene ninguna promoción activa en este momento.")
         set_user_state(wa_id, MAIN_MENU, {})
-        procesar_mensaje(wa_id, "2", nombre)
+        procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         return False
 
 def generar_borrador_promocion(wa_id, temp_data, nombre):
@@ -699,6 +737,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         
         options = [
             {"id": "MAIN_VER_LINK", "title": "🌐 Ver mi página web"},
+            {"id": "MAIN_PRECIOS", "title": "📋 Precios y Promos", "description": "Gestionar lista y promociones"},
             {"id": "MAIN_EDITAR", "title": "🛠️ Textos / Imágenes", "description": "Editar textos e imágenes"},
             {"id": "MAIN_DOMAIN", "title": "🌐 Comprar Dominio", "description": "Buscador de dominios .com.ar"},
             {"id": "MAIN_TRANSFER", "title": "🔄 Transferir Admin", "description": "Cambiar número celular"},
@@ -847,6 +886,8 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         if texto_limpio == "main_ver_link" or texto_limpio == "1":
             msg = "Aún no la hemos publicado oficialmente, pero este es tu link temporal de Demo. En breve estará 100% activa."
             send_whatsapp_message(wa_id, msg)
+        elif texto_limpio in ["main_precios", "precios", "promos", "promociones", "lista de precios"]:
+            mostrar_menu_precios(wa_id)
         elif texto_limpio == "main_soporte" or texto_limpio == "main_contact":
             send_whatsapp_message(wa_id, "Escribí el mensaje que le querés enviar al administrador.\n\n⚠️ *Aviso*: Esto no es un chat en vivo, pero tu mensaje quedará registrado y te responderemos por este mismo medio en el transcurso del día.")
             set_user_state(wa_id, WAITING_FOR_ADMIN_MESSAGE)
@@ -865,7 +906,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME)
             
-        elif texto_limpio == "main_editar" or texto_limpio == "2":
+        elif texto_limpio in ["main_editar", "editar", "2"]:
             msg = "✏️ *Menú de Edición*\n¿Qué parte de tu página web querés modificar?\n\n💡 _Para volver al menú principal escribí *volver*_"
             options = [
                 {"id": "EDIT_TITULO", "title": "📝 Editar Título"},
@@ -874,7 +915,6 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 {"id": "EDIT_LOCATION", "title": "📍 Editar Ubicación"},
                 {"id": "EDIT_SCHEDULE", "title": "🕒 Editar Horarios"},
                 {"id": "EDIT_IMAGENES", "title": "🖼️ Editar Imágenes"},
-                {"id": "EDIT_PRECIOS", "title": "📋 Lista de Precios"},
                 {"id": "EDIT_WHATSAPP", "title": "💬 Editar WhatsApp"},
                 {"id": "EDIT_EMAIL", "title": "✉️ Editar Email"},
                 {"id": "EDIT_INSTAGRAM", "title": "📷 Editar Instagram"}
@@ -929,41 +969,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, IDLE, {})
         elif texto_limpio in ["edit_precios", "precios", "lista de precios", "7"]:
-            web_info = obtener_web_del_cliente(wa_id)
-            tiene_lista = False
-            tiene_promo = False
-            if web_info and web_info.get("content"):
-                lp = web_info["content"].get("lista_precios")
-                if lp and isinstance(lp, dict) and lp.get("items"):
-                    tiene_lista = True
-                    if lp.get("promocion_fecha"):
-                        tiene_promo = True
-
-            if tiene_lista:
-                options = [
-                    {"id": "PRECIOS_ACTUALIZAR", "title": "📄 Actualizar Precios", "description": "Subir nuevo Excel, PDF o texto"},
-                    {"id": "PROMO_FECHA_START", "title": "📅 Promo por Fecha", "description": "Reserva anticipada con % de descuento"}
-                ]
-                if tiene_promo:
-                    options.append({"id": "PROMO_DETENER", "title": "⏹️ Detener Promo Activa", "description": "Quitar descuento y volver a precios normales"})
-                options.append({"id": "PRECIOS_QUITAR", "title": "🗑️ Quitar Lista", "description": "Eliminar la lista de precios de la web"})
-                options.append({"id": "PRECIOS_VOLVER", "title": "⬅️ Volver", "description": "Regresar al menú de edición"})
-
-                msg = ("📋 *Gestión de Precios y Promociones*\n\n"
-                       "Ya tenés una lista de precios publicada en tu web. Elegí qué deseás configurar:")
-                send_whatsapp_list(wa_id, msg, "Ver Opciones", options, "Precios y Promos")
-                set_user_state(wa_id, WAITING_FOR_PRICE_MENU_OPTION)
-            else:
-                msg = ("📋 *Actualización de Lista de Precios*\n\n"
-                       "Podés enviarme:\n"
-                       "1️⃣ Un archivo Excel (.xlsx) o CSV.\n"
-                       "2️⃣ Un archivo PDF con tus precios.\n"
-                       "3️⃣ Una foto nítida de tu lista o pizarra de precios.\n"
-                       "4️⃣ O directamente escribir/pegar tu lista acá por texto (Ej: Corte $15.000 / Barba $8.000).\n\n"
-                       "¿Cómo preferís enviármela?\n\n"
-                       "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
-                send_whatsapp_message(wa_id, msg)
-                set_user_state(wa_id, WAITING_FOR_PRICE_LIST)
+            mostrar_menu_precios(wa_id)
         elif texto_limpio == "edit_whatsapp":
             send_whatsapp_message(wa_id, "Escribí el número de WhatsApp donde querés recibir las consultas de tus clientes (Ej: +54 9 1131234567 o 1131234567).")
             set_user_state(wa_id, WAITING_FOR_WHATSAPP)
@@ -1346,7 +1352,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             else:
                 send_whatsapp_message(wa_id, "ℹ️ Tu web no tenía ninguna lista de precios publicada.")
             set_user_state(wa_id, MAIN_MENU, {})
-            procesar_mensaje(wa_id, "2", nombre)
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
             return
 
         send_whatsapp_message(wa_id, "⏳ Analizando tu lista de precios... aguardá unos segundos.")
@@ -1411,7 +1417,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
                 send_whatsapp_message(wa_id, "⚠️ Necesitás tener una lista de precios publicada antes de configurar una promoción.")
                 set_user_state(wa_id, MAIN_MENU, {})
-                procesar_mensaje(wa_id, "2", nombre)
+                procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
                 return
             msg = ("📅 *Promoción por Fecha / Reserva Anticipada*\n\n"
                    "Paso 1 de 4: ¿Qué nombre o título querés ponerle al evento o jornada?\n"
@@ -1435,10 +1441,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             else:
                 send_whatsapp_message(wa_id, "ℹ️ Tu web no tenía ninguna lista de precios publicada.")
             set_user_state(wa_id, MAIN_MENU, {})
-            procesar_mensaje(wa_id, "2", nombre)
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         elif texto_limpio in ["precios_volver", "volver", "cancelar", "5"]:
             set_user_state(wa_id, MAIN_MENU, {})
-            procesar_mensaje(wa_id, "2", nombre)
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         else:
             send_whatsapp_message(wa_id, "Por favor, elegí una opción de la lista de gestión de precios o escribí *volver*.")
 
@@ -1460,13 +1466,13 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         current_data["promo_desc_1"] = desc_1
         set_user_state(wa_id, WAITING_FOR_PROMO_DATE_1, current_data)
         msg = (f"⏳ Paso 3 de 4: ¿Hasta qué fecha es válido ese {desc_1}% OFF inicial?\n\n"
-               "Escribí día y mes (Por ejemplo: 27/10 o 27/10/2026):")
+               "Escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):")
         send_whatsapp_message(wa_id, msg)
 
     elif estado_actual == WAITING_FOR_PROMO_DATE_1:
         parsed_date = parse_promo_date(texto)
         if not parsed_date:
-            send_whatsapp_message(wa_id, "⚠️ No pude entender la fecha. Por favor escribí el día y el mes (por ejemplo: 27/10 o 27/10/2026):")
+            send_whatsapp_message(wa_id, "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):")
             return
         current_data = get_user_state(wa_id).get("temp_data", {})
         current_data["promo_date_1_iso"] = parsed_date["iso"]
@@ -1509,13 +1515,13 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         set_user_state(wa_id, WAITING_FOR_PROMO_DATE_2, current_data)
         date_1_display = current_data.get("promo_date_1_display", "")
         msg = (f"⏳ ¿Hasta qué fecha límite es válido este {desc_2}% OFF?\n\n"
-               f"Debe ser posterior al {date_1_display} (Por ejemplo: 15/11 o 15/11/2026):")
+               f"Debe ser posterior al {date_1_display} (Por ejemplo: 15/11/2026):")
         send_whatsapp_message(wa_id, msg)
 
     elif estado_actual == WAITING_FOR_PROMO_DATE_2:
         parsed_date = parse_promo_date(texto)
         if not parsed_date:
-            send_whatsapp_message(wa_id, "⚠️ No pude entender la fecha. Por favor escribí día y mes (por ejemplo: 15/11 o 15/11/2026):")
+            send_whatsapp_message(wa_id, "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 15/11/2026):")
             return
         current_data = get_user_state(wa_id).get("temp_data", {})
         current_data["promo_date_2_iso"] = parsed_date["iso"]

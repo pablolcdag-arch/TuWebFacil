@@ -196,3 +196,16 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   6. Se amplió la suite `scripts/utils/test_price_list_frontend.py` incorporando el Test 7 integral (100% PASS), verificado y aprobado formalmente con balance estricto de tags Jinja2 y cero regresiones.
 - **Razón:** Maximizar la conversión de clientes finales visibilizando de inmediato el beneficio de la reserva anticipada (urgencia visual mediante precios tachados) sin obligar al usuario a iniciar la conversación por WhatsApp para conocer el descuento real.
 - **Impacto:** Experiencia visual de alta gama en la web pública del cliente con sincronización total entre banner, tabla, pestañas móviles, carrito y mensaje de WhatsApp.
+
+## [17/10/2026] — Promoción de Precios al Menú Principal y Formato Estricto de Fechas con Año
+- **Decisión:**
+  1. En `bot_engine.py`, se promovió la gestión de precios directamente al Menú Principal (`MAIN_MENU`), ubicando `{"id": "MAIN_PRECIOS", "title": "📋 Precios y Promos", "description": "Gestionar lista y promociones"}` en segunda posición (índice 1). La lista principal queda con 7 opciones, respetando holgadamente el límite de $\le 10$ filas de WhatsApp Cloud API.
+  2. Se extrajo la lógica de apertura a la función modular `mostrar_menu_precios(wa_id)`:
+     - Si la web ya posee lista de precios, despacha el submenú interactivo (`PRECIOS_ACTUALIZAR`, `PROMO_FECHA_START`, `PROMO_DETENER` si aplica, `PRECIOS_QUITAR` y `PRECIOS_VOLVER`).
+     - Si no posee lista, despacha el instructivo de carga de archivos (Excel, PDF, imagen o texto) y transiciona a `WAITING_FOR_PRICE_LIST`.
+  3. En `EDIT_MENU`, se removió `EDIT_PRECIOS` de la lista interactiva, reduciéndola de 10 a 9 opciones enfocadas estrictamente en textos, imágenes y datos de contacto, manteniendo el alias en código por retrocompatibilidad.
+  4. Navegación y salidas: Salir mediante `PRECIOS_VOLVER`, detener una promo activa o eliminar la lista ahora redirige limpiamente al Menú Principal ("Panel de Control"), reseteando el estado sin bloqueos en SQLite.
+  5. En la máquina de estados de promociones por fecha (`WAITING_FOR_PROMO_DISCOUNT_1`, `WAITING_FOR_PROMO_DATE_1`, `WAITING_FOR_PROMO_DISCOUNT_2`, `WAITING_FOR_PROMO_DATE_2`), se modificaron los mensajes interactivos y fallbacks de error para exigir explícitamente el año completo en formato `DD/MM/AAAA` (ej. `27/10/2026` y `15/11/2026`), eliminando la sugerencia sin año `27/10` para prevenir cualquier ambigüedad en el calendario.
+  6. Se actualizó la suite `scripts/utils/test_price_list_backend.py` (Tests 4, 7 y 10) validando el acceso desde `MAIN_MENU`, retrocompatibilidad con `EDIT_MENU`, contrato de caracteres y validación de fechas (100% PASS).
+- **Razón:** Los comerciantes actualizan precios y promociones con mucha mayor frecuencia que los textos o fotos institucionales; tener "Precios y Promos" en el menú principal reduce la fricción operativa a cero y descomprime el submenú de edición. Asimismo, exigir el año explícito en las fechas elimina errores de interpretación humana y rollovers accidentales de año.
+- **Impacto:** Arquitectura de navegación del bot más intuitiva, mayor visibilidad para la herramienta de precios y prompts conversacionales 100% deterministas.

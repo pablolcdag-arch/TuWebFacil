@@ -121,28 +121,61 @@ Corte y barba: $20.000"""
     print("  ✅ Texto plano parseado correctamente con fallback determinista.")
 
     # ---------------------------------------------------------
-    # TEST 4: Bot WhatsApp FSM - Menú y Transición a WAITING_FOR_PRICE_LIST
+    # TEST 4: Bot WhatsApp FSM - Menú y Transición a WAITING_FOR_PRICE_LIST / MAIN_PRECIOS
     # ---------------------------------------------------------
-    print("\n[TEST 4] Verificando Bot FSM: acceso a EDIT_PRECIOS...")
+    print("\n[TEST 4] Verificando Bot FSM: acceso a MAIN_PRECIOS y retrocompatibilidad EDIT_PRECIOS...")
     test_wa = "5491199990001"
     bot_engine.clear_user_state(test_wa)
-    bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
 
+    # 4A: Verificar que MAIN_MENU incluye MAIN_PRECIOS en 2da posición (índice 1)
+    with patch("bot_engine.send_whatsapp_list") as mock_send_list:
+        bot_engine.procesar_mensaje(test_wa, "confirmar mi web", "Tester")
+        mock_send_list.assert_called_once()
+        main_options = mock_send_list.call_args[0][3]
+        assert len(main_options) >= 2
+        assert main_options[1]["id"] == "MAIN_PRECIOS"
+        assert main_options[1]["title"] == "📋 Precios y Promos"
+        assert main_options[1]["description"] == "Gestionar lista y promociones"
+
+    # 4B: Desde MAIN_MENU seleccionar MAIN_PRECIOS transiciona a WAITING_FOR_PRICE_LIST si no hay lista previa
+    bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
     with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
-        bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
-        
-        # Verificar estado
+        bot_engine.procesar_mensaje(test_wa, "main_precios", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PRICE_LIST, f"Estado incorrecto: {state['estado']}"
         mock_send_msg.assert_called_once()
         msg_text = mock_send_msg.call_args[0][1]
         assert "Actualización de Lista de Precios" in msg_text
-    print("  ✅ EDIT_MENU -> EDIT_PRECIOS transiciona a WAITING_FOR_PRICE_LIST.")
+
+    # 4C: Retrocompatibilidad: EDIT_MENU -> edit_precios llama a mostrar_menu_precios
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
+
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PRICE_LIST, f"Estado incorrecto: {state['estado']}"
+        mock_send_msg.assert_called_once()
+        msg_text = mock_send_msg.call_args[0][1]
+        assert "Actualización de Lista de Precios" in msg_text
+
+    # 4D: Verificar que EDIT_MENU ahora contiene 9 opciones y no incluye EDIT_PRECIOS
+    bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
+    with patch("bot_engine.send_whatsapp_list") as mock_send_list:
+        bot_engine.procesar_mensaje(test_wa, "2", "Tester")
+        mock_send_list.assert_called_once()
+        edit_opts = mock_send_list.call_args[0][3]
+        assert len(edit_opts) == 9, f"EDIT_MENU debe tener exactamente 9 opciones, obtenido: {len(edit_opts)}"
+        edit_ids = [o["id"] for o in edit_opts]
+        assert "EDIT_PRECIOS" not in edit_ids
+
+    print("  ✅ MAIN_MENU incluye MAIN_PRECIOS (2da pos), EDIT_MENU reducido a 9 opciones y retrocompatibilidad asegurada.")
 
     # ---------------------------------------------------------
     # TEST 5: Bot WhatsApp FSM - Generación de Borrador y Botones <= 20 chars
     # ---------------------------------------------------------
     print("\n[TEST 5] Verificando generación de borrador, draft_token y botones <= 20 chars...")
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_LIST)
     with patch("bot_engine.send_whatsapp_message"), \
          patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
          patch("bot_engine.obtener_web_del_cliente", return_value={"slug": "estetica-sol", "custom_domain": None, "id": "w1"}):
@@ -278,9 +311,9 @@ Corte y barba: $20.000"""
         assert "🗑️ ¡Listo! Tu lista de precios fue eliminada" in del_confirm_msg
         assert "https://spa-relax.tuweblista.com.ar" in del_confirm_msg
 
-        # Debe haber vuelto a enviar el menú de edición (vía opción "2")
+        # Debe haber vuelto a enviar el menú principal (Panel de Control)
         mock_send_list.assert_called_once()
-        assert mock_send_list.call_args[0][4] == "Edición de Web"
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
 
     # 7B: Cliente sin lista previa escribe 'borrar'
     bot_engine.clear_user_state(test_wa)
@@ -305,10 +338,11 @@ Corte y barba: $20.000"""
         info_msg = mock_send_msg.call_args_list[0][0][1]
         assert "ℹ️ Tu web no tenía ninguna lista de precios publicada." in info_msg
         mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
 
-    # 7C: Mensaje en EDIT_MENU con vs sin lista de precios
+    # 7C: Mensaje en submenú de precios con vs sin lista de precios
     bot_engine.clear_user_state(test_wa)
-    bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
+    bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
 
     web_con_lista_activa = {
         "website_id": "w999",
@@ -327,7 +361,7 @@ Corte y barba: $20.000"""
 
     with patch("bot_engine.send_whatsapp_list") as mock_send_list, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_con_lista_activa):
-        bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
+        bot_engine.procesar_mensaje(test_wa, "main_precios", "Tester")
         assert mock_send_list.called
         list_args = mock_send_list.call_args[0]
         msg_con = list_args[1]
@@ -338,19 +372,29 @@ Corte y barba: $20.000"""
         assert "PROMO_FECHA_START" in opt_ids
         assert "PRECIOS_QUITAR" in opt_ids
         assert "PRECIOS_VOLVER" in opt_ids
+        volver_opt = next(o for o in options_sent if o["id"] == "PRECIOS_VOLVER")
+        assert volver_opt["description"] == "Regresar al menú principal"
         assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PRICE_MENU_OPTION
 
+    # 7D: Probar que PRECIOS_VOLVER desde WAITING_FOR_PRICE_MENU_OPTION regresa a Panel de Control
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_MENU_OPTION)
+    with patch("bot_engine.send_whatsapp_list") as mock_send_list:
+        bot_engine.procesar_mensaje(test_wa, "precios_volver", "Tester")
+        mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
     bot_engine.clear_user_state(test_wa)
-    bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
+    bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
 
     with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_sin_lista):
-        bot_engine.procesar_mensaje(test_wa, "edit_precios", "Tester")
+        bot_engine.procesar_mensaje(test_wa, "main_precios", "Tester")
         msg_sin = mock_send_msg.call_args[0][1]
         assert "Ya tenés una lista de precios publicada" not in msg_sin
         assert "Actualización de Lista de Precios" in msg_sin
 
-    print("  ✅ Eliminación de lista de precios y adaptación del menú de edición verificadas.")
+    print("  ✅ Eliminación de lista de precios, retorno a Panel de Control y adaptación del menú de precios verificadas.")
 
     # ---------------------------------------------------------
     # TEST 8: Flask app.py - Vista Previa Temporal con ?preview=TOKEN
@@ -509,6 +553,7 @@ Corte y barba: $20.000"""
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_1
         assert state["temp_data"]["promo_desc_1"] == 30
         assert "Paso 3 de 4" in mock_send_msg.call_args[0][1]
+        assert "Escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):" in mock_send_msg.call_args[0][1]
 
     # 10F. Paso 3: Fecha Límite Tramo 1 y Botones Tramo 2 (<= 20 chars)
     with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
@@ -517,6 +562,7 @@ Corte y barba: $20.000"""
         bot_engine.procesar_mensaje(test_wa, "mañana pasado", "Tester")
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_1
+        assert "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 27/10/2026):" in mock_send_msg.call_args[0][1]
         
         # Input válido: 27/10/2026
         bot_engine.procesar_mensaje(test_wa, "27/10/2026", "Tester")
@@ -543,6 +589,13 @@ Corte y barba: $20.000"""
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_2
         assert state["temp_data"]["promo_desc_2"] == 15
+        assert "Debe ser posterior al 27 de Octubre de 2026 (Por ejemplo: 15/11/2026):" in mock_send_msg.call_args[0][1]
+
+        # Input inválido
+        bot_engine.procesar_mensaje(test_wa, "semana próxima", "Tester")
+        state = bot_engine.get_user_state(test_wa)
+        assert state["estado"] == bot_engine.WAITING_FOR_PROMO_DATE_2
+        assert "⚠️ No pude entender la fecha. Por favor escribí la fecha completa con día, mes y año (Por ejemplo: 15/11/2026):" in mock_send_msg.call_args[0][1]
 
     with patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
@@ -631,7 +684,7 @@ Corte y barba: $20.000"""
     # 10J.1 Vía submenú WAITING_FOR_PRICE_MENU_OPTION
     bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_MENU_OPTION)
     with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
-         patch("bot_engine.send_whatsapp_list"), \
+         patch("bot_engine.send_whatsapp_list") as mock_send_list, \
          patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_con_promo_activa):
         
@@ -642,13 +695,15 @@ Corte y barba: $20.000"""
         assert len(c_data["lista_precios"]["items"]) == 1
         confirm_detener = mock_send_msg.call_args_list[0][0][1]
         assert "La promoción fue detenida" in confirm_detener
+        mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
 
     # 10J.2 Vía palabra clave global ('detener promo')
     import copy
     web_promo_activa_2 = copy.deepcopy(web_con_promo_activa)
     web_promo_activa_2["content"]["lista_precios"]["promocion_fecha"] = saved_promo
     with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
-         patch("bot_engine.send_whatsapp_list"), \
+         patch("bot_engine.send_whatsapp_list") as mock_send_list, \
          patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_activa_2):
         
@@ -656,6 +711,8 @@ Corte y barba: $20.000"""
         mock_update.assert_called_once()
         v_id, c_data = mock_update.call_args[0]
         assert "promocion_fecha" not in c_data["lista_precios"]
+        mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
     
     print("  ✅ FSM interactiva, validaciones de fecha/descuento, generación de borrador y detención de promo verificadas al 100%.")
 
