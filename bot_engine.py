@@ -908,20 +908,22 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         elif texto_limpio in ["main_precios", "precios", "promos", "promociones", "lista de precios"]:
             mostrar_menu_precios(wa_id)
         elif texto_limpio == "main_soporte" or texto_limpio == "main_contact":
-            send_whatsapp_message(wa_id, "Escribí el mensaje que le querés enviar al administrador.\n\n⚠️ *Aviso*: Esto no es un chat en vivo, pero tu mensaje quedará registrado y te responderemos por este mismo medio en el transcurso del día.")
+            send_whatsapp_message(wa_id, "Escribí el mensaje que le querés enviar al administrador.\n\n⚠️ *Aviso*: Esto no es un chat en vivo, pero tu mensaje quedará registrado y te responderemos por este mismo medio en el transcurso del día.\n\n💡 _Si no querés enviar ningún mensaje ahora, escribí *cancelar* o *volver* para regresar al menú._")
             set_user_state(wa_id, WAITING_FOR_ADMIN_MESSAGE)
 
         elif texto_limpio == "main_transfer":
             msg = ("🔄 *Transferir Administración*\n\n"
                    "Para transferir la administración de esta web a otro número, escribí acá abajo el nuevo número de WhatsApp (Ej: 1131234567 o +5491131234567).\n\n"
-                   "⚠️ Importante: Una vez confirmada la transferencia, perderás acceso a este menú.")
+                   "⚠️ Importante: Una vez confirmada la transferencia, perderás acceso a este menú.\n\n"
+                   "💡 _Si no querés transferirla ahora, escribí *cancelar* o *volver* para regresar al menú._")
             send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_TRANSFER_PHONE)
 
         elif texto_limpio == "main_domain":
             msg = ("🌐 *Buscador Oficial de Dominios (.com.ar)*\n\n"
                    "Escribí acá abajo el nombre que te gustaría tener para tu página (Ej: mipanaderia, estudiojuridico, etc).\n\n"
-                   "No hace falta que escribas el '.com.ar', nosotros lo agregamos y verificamos si está disponible en NIC Argentina al instante.")
+                   "No hace falta que escribas el '.com.ar', nosotros lo agregamos y verificamos si está disponible en NIC Argentina al instante.\n\n"
+                   "💡 _Si preferís hacerlo en otro momento, escribí *cancelar* o *volver* para regresar al menú._")
             send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME)
             
@@ -958,10 +960,14 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
 
     elif estado_actual == EDIT_MENU:
         if texto_limpio == "edit_titulo" or texto_limpio == "1":
-            send_whatsapp_message(wa_id, "Escribí el nuevo Título que querés para tu web (Por ejemplo: 'Estudio Jurídico Gonzalez'):")
+            msg = ("Escribí el nuevo Título que querés para tu web (Por ejemplo: 'Estudio Jurídico Gonzalez').\n\n"
+                   "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_TITLE)
         elif texto_limpio == "edit_subtitulo" or texto_limpio == "2":
-            send_whatsapp_message(wa_id, "Escribí el nuevo *Subtítulo*\n*(Por ejemplo: 'Más de 20 años ayudando a las personas'):*")
+            msg = ("Escribí el nuevo *Subtítulo*\n*(Por ejemplo: 'Más de 20 años ayudando a las personas'):*\n\n"
+                   "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_SUBTITLE)
         elif texto_limpio == "edit_servicios" or texto_limpio == "3":
             msg = "¿Qué servicio querés editar?"
@@ -974,10 +980,14 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             send_whatsapp_list(wa_id, msg, "Elegir Servicio", options, "Editar Servicios")
             set_user_state(wa_id, "EDIT_MENU_SERVICIOS")
         elif texto_limpio == "edit_location" or texto_limpio == "4":
-            send_whatsapp_message(wa_id, "Escribí la nueva Ubicación o Dirección (Por ejemplo: 'Avenida Corrientes 1000, CABA'. Mientras más exacto, mejor aparecerá en el mapa, tambien podes poner ciudad y provincia si no queres poner una direccion exacta):")
+            msg = ("Escribí la nueva Ubicación o Dirección (Por ejemplo: 'Avenida Corrientes 1000, CABA'. Mientras más exacto, mejor aparecerá en el mapa. También podés poner ciudad y provincia si no querés poner una dirección exacta).\n\n"
+                   "💡 _Si no querés cambiarla ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_LOCATION)
         elif texto_limpio == "edit_schedule" or texto_limpio == "5":
-            send_whatsapp_message(wa_id, "Escribí tus *Horarios de Atención*\n*(Por ejemplo: 'Lunes a Viernes de 9 a 18hs').*\n\nSi no querés mostrar los horarios, escribí *Ocultar*:")
+            msg = ("Escribí tus *Horarios de Atención*\n*(Por ejemplo: 'Lunes a Viernes de 9 a 18hs').*\n\nSi no querés mostrar los horarios, escribí *Ocultar*.\n\n"
+                   "💡 _Si no querés cambiarlos ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_SCHEDULE)
         elif texto_limpio == "edit_imagenes" or texto_limpio == "6":
             msg = ("💡 *Tamaños sugeridos:*\n"
@@ -992,14 +1002,20 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         elif texto_limpio in ["edit_precios", "precios", "lista de precios", "7"]:
             mostrar_menu_precios(wa_id)
         elif texto_limpio == "edit_whatsapp":
-            send_whatsapp_message(wa_id, "Escribí el número de WhatsApp donde querés recibir las consultas de tus clientes (Ej: +54 9 1131234567 o 1131234567).")
+            msg = ("Escribí el número de WhatsApp donde querés recibir las consultas de tus clientes (Ej: +54 9 1131234567 o 1131234567).\n\n"
+                   "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_WHATSAPP)
 
         elif texto_limpio == "edit_email":
-            send_whatsapp_message(wa_id, "Escribí la dirección de correo electrónico que querés mostrar en la sección de contacto de tu web (Ej: info@empresa.com).\n\nSi no querés mostrar ningún correo, simplemente escribí *Ocultar*.")
+            msg = ("Escribí la dirección de correo electrónico que querés mostrar en la sección de contacto de tu web (Ej: info@empresa.com).\n\nSi no querés mostrar ningún correo, simplemente escribí *Ocultar*.\n\n"
+                   "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_EMAIL)
         elif texto_limpio == "edit_instagram" or texto_limpio == "9":
-            send_whatsapp_message(wa_id, "Escribí tu usuario de Instagram (Ej: @minegocio) o pegá el enlace directo a tu perfil.\n\nSi no querés mostrar tu Instagram en la web, simplemente escribí *Ocultar*.")
+            msg = ("Escribí tu usuario de Instagram (Ej: @minegocio) o pegá el enlace directo a tu perfil.\n\nSi no querés mostrar tu Instagram en la web, simplemente escribí *Ocultar*.\n\n"
+                   "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, WAITING_FOR_INSTAGRAM)
 
         elif texto_limpio == "edit_volver" or texto_limpio == "0":
@@ -1010,13 +1026,19 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             
     elif estado_actual == "EDIT_MENU_SERVICIOS":
         if texto_limpio == "edit_srv_1" or texto_limpio == "1":
-            send_whatsapp_message(wa_id, "Escribí el nuevo *Título* para el Servicio 1:")
+            msg = ("Escribí el nuevo *Título* para el Servicio 1:\n\n"
+                   "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 0})
         elif texto_limpio == "edit_srv_2" or texto_limpio == "2":
-            send_whatsapp_message(wa_id, "Escribí el nuevo *Título* para el Servicio 2:")
+            msg = ("Escribí el nuevo *Título* para el Servicio 2:\n\n"
+                   "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 1})
         elif texto_limpio == "edit_srv_3" or texto_limpio == "3":
-            send_whatsapp_message(wa_id, "Escribí el nuevo *Título* para el Servicio 3:")
+            msg = ("Escribí el nuevo *Título* para el Servicio 3:\n\n"
+                   "💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._")
+            send_whatsapp_message(wa_id, msg)
             set_user_state(wa_id, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 2})
         elif texto_limpio == "edit_volver" or texto_limpio == "0":
             set_user_state(wa_id, MAIN_MENU, {})
@@ -1028,7 +1050,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         nuevo_titulo = texto.strip()
         current_data = get_user_state(wa_id).get("temp_data", {})
         current_data["nuevo_titulo_srv"] = nuevo_titulo
-        send_whatsapp_message(wa_id, "Excelente. Ahora escribí la *Descripción* para este servicio\n*(Por ejemplo: 'Asesoramiento legal integral personalizado'):*")
+        msg = ("Excelente. Ahora escribí la *Descripción* para este servicio\n"
+               "*(Por ejemplo: 'Asesoramiento legal integral personalizado'):*\n\n"
+               "💡 _Si no querés cambiarla ahora, escribí *cancelar* o *volver* para regresar al menú._")
+        send_whatsapp_message(wa_id, msg)
         set_user_state(wa_id, "WAITING_FOR_SERVICE_DESC", current_data)
         
     elif estado_actual == "WAITING_FOR_SERVICE_DESC":

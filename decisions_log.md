@@ -237,3 +237,13 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   3. En `scripts/utils/test_price_list_backend.py`, se ampliaron los tests 4E, 4F, 4G, 4H, 6B y 10I verificando la presencia del botón `btn_menu` y la reactividad universal ante su pulsación (100% PASS).
 - **Razón:** En el diseño de experiencia conversacional (UX), dejar mensajes terminales sin un llamado a la acción (Call To Action) claro genera fricción y desorienta al usuario. Incorporar el botón interactivo permite regresar al menú en un solo toque en el celular sin necesidad de tipear.
 - **Impacto:** Navegación ergonómica, continua y sin callejones sin salida en toda la interacción con el bot.
+
+## [18/10/2026] — Leyendas de Salida y Cancelación en Todos los Estados de Edición
+- **Decisión:**
+  1. En `bot_engine.py`, se estandarizó la incorporación de la leyenda explícita de escape al final de los mensajes en los 12 estados conversacionales de solicitud de texto:
+     `💡 _Si no querés cambiarlo ahora, escribí *cancelar* o *volver* para regresar al menú._`
+     - Aplicado a: Título (`WAITING_FOR_TITLE`), Subtítulo (`WAITING_FOR_SUBTITLE`), Ubicación (`WAITING_FOR_LOCATION`), Horarios (`WAITING_FOR_SCHEDULE`), WhatsApp (`WAITING_FOR_WHATSAPP`), Email (`WAITING_FOR_EMAIL`), Instagram (`WAITING_FOR_INSTAGRAM`), Servicios 1, 2 y 3 (`EDIT_MENU_SERVICIOS`), Descripción de servicios (`WAITING_FOR_SERVICE_TITLE`), Búsqueda de dominio (`WAITING_FOR_DOMAIN_NAME`), Mensaje a soporte (`WAITING_FOR_ADMIN_MESSAGE`) y Transferencia de administración (`WAITING_FOR_TRANSFER_PHONE`).
+  2. Al ingresar `cancelar` o `volver`, el motor intercepta la palabra universalmente, ejecuta `clear_user_state(wa_id)` descartando cambios en memoria sin tocar `website_content` en Supabase y redirige al Panel de Control principal (`MAIN_MENU`).
+  3. En `scripts/utils/test_price_list_backend.py`, se incorporó el **TEST 11** validando la presencia de las leyendas de cancelación en los mensajes iniciales y verificando la inocuidad y reseteo de sesión ante `cancelar` y `volver` (100% PASS, 11/11 tests).
+- **Razón:** Prevenir que usuarios que ingresan por curiosidad, error o que se arrepienten a mitad de un cambio queden forzados a ingresar un dato o crean que el bot quedó bloqueado sin salida.
+- **Impacto:** Experiencia conversacional transparente, guiada y libre de trampas de entrada en todos los módulos de edición del bot.

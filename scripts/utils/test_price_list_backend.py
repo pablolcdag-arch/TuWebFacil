@@ -772,6 +772,78 @@ Corte y barba: $20.000"""
     
     print("  ✅ FSM interactiva, validaciones de fecha/descuento, generación de borrador y detención de promo verificadas al 100%.")
 
+    # ---------------------------------------------------------
+    # TEST 11: Leyendas de Cancelación / Salida y Erradicación de Dead-Ends
+    # ---------------------------------------------------------
+    print("\n[TEST 11] Verificando leyendas de cancelación y reseteo universal en estados de edición...")
+    
+    # 11A. Verificar que los prompts de edición informan cómo cancelar
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(test_wa, "edit_titulo", "Tester")
+        assert mock_send_msg.called
+        prompt_txt = mock_send_msg.call_args[0][1]
+        assert "cancelar" in prompt_txt and "volver" in prompt_txt
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_TITLE
+
+    # Verificar prompts de subtítulo, ubicación, horarios, whatsapp, email, instagram
+    edit_test_cases = [
+        ("edit_subtitulo", bot_engine.WAITING_FOR_SUBTITLE),
+        ("edit_location", bot_engine.WAITING_FOR_LOCATION),
+        ("edit_schedule", bot_engine.WAITING_FOR_SCHEDULE),
+        ("edit_whatsapp", bot_engine.WAITING_FOR_WHATSAPP),
+        ("edit_email", bot_engine.WAITING_FOR_EMAIL),
+        ("edit_instagram", bot_engine.WAITING_FOR_INSTAGRAM),
+    ]
+    for cmd, expected_state in edit_test_cases:
+        bot_engine.set_user_state(test_wa, bot_engine.EDIT_MENU)
+        with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+            bot_engine.procesar_mensaje(test_wa, cmd, "Tester")
+            assert mock_send_msg.called
+            msg_txt = mock_send_msg.call_args[0][1]
+            assert "cancelar" in msg_txt and "volver" in msg_txt, f"Prompt para {cmd} no contiene leyenda de salida"
+            assert bot_engine.get_user_state(test_wa)["estado"] == expected_state
+
+    # 11B. Cancelar en WAITING_FOR_TITLE no modifica BD, limpia sesión y regresa al Panel de Control
+    mock_web_cancel = {
+        "website_id": "w_cancel",
+        "version_id": "v_cancel",
+        "content": {"titulo_web": "Título Intacto"},
+        "slug": "negocio-cancel",
+        "custom_domain": None
+    }
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_TITLE)
+    with patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+         patch("bot_engine.actualizar_web_content") as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_cancel):
+        bot_engine.procesar_mensaje(test_wa, "cancelar", "Tester")
+        mock_update.assert_not_called()
+        # Vuelve al Panel de Control
+        mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    # 11C. Volver en WAITING_FOR_SERVICE_TITLE tampoco modifica y resetea a menú
+    bot_engine.set_user_state(test_wa, "WAITING_FOR_SERVICE_TITLE", {"servicio_idx": 0})
+    with patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+         patch("bot_engine.actualizar_web_content") as mock_update:
+        bot_engine.procesar_mensaje(test_wa, "volver", "Tester")
+        mock_update.assert_not_called()
+        mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    # 11D. Botón btn_menu desde WAITING_FOR_LOCATION resetea a menú
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_LOCATION)
+    with patch("bot_engine.send_whatsapp_list") as mock_send_list:
+        bot_engine.procesar_mensaje(test_wa, "btn_menu", "Tester")
+        mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    print("  ✅ Leyendas de cancelación y reseteo sin modificación de BD verificadas al 100%.")
+
     # Limpiar estado final
     bot_engine.clear_user_state(test_wa)
 
