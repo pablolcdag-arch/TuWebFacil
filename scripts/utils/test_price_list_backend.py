@@ -169,21 +169,25 @@ Corte y barba: $20.000"""
         edit_ids = [o["id"] for o in edit_opts]
         assert "EDIT_PRECIOS" not in edit_ids
 
-    # 4E: MAIN_MENU -> "main_ver_link" envía la URL de la web del cliente
+    # 4E: MAIN_MENU -> "main_ver_link" envía la URL de la web del cliente con botón btn_menu
     bot_engine.set_user_state(test_wa, bot_engine.MAIN_MENU)
     web_cliente_link = {
         "slug": "estetica-sol",
         "custom_domain": None,
         "id": "w1"
     }
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+    with patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_cliente_link) as mock_get_web:
         bot_engine.procesar_mensaje(test_wa, "main_ver_link", "Tester")
         mock_get_web.assert_called_once_with(test_wa)
-        mock_send_msg.assert_called_once()
-        msg_text = mock_send_msg.call_args[0][1]
+        mock_buttons.assert_called_once()
+        b_args = mock_buttons.call_args[0]
+        msg_text = b_args[1]
+        buttons_sent = b_args[2]
         assert "🌐 *Tu Página Web:*" in msg_text
         assert "https://estetica-sol.tuweblista.com.ar" in msg_text
+        assert any(b["id"] == "btn_menu" and b["title"] == "📱 Menú Principal" for b in buttons_sent)
+        assert all(len(b["title"]) <= 20 for b in buttons_sent)
 
     # 4F: Probar con custom_domain y variantes textuales ("ver mi página web", "ver web", "1")
     web_cliente_custom = {
@@ -191,22 +195,33 @@ Corte y barba: $20.000"""
         "custom_domain": "esteticasol.com.ar",
         "id": "w1"
     }
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+    with patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_cliente_custom):
         bot_engine.procesar_mensaje(test_wa, "ver mi página web", "Tester")
-        mock_send_msg.assert_called_once()
-        msg_text = mock_send_msg.call_args[0][1]
+        mock_buttons.assert_called_once()
+        msg_text = mock_buttons.call_args[0][1]
         assert "https://esteticasol.com.ar" in msg_text
+        assert any(b["id"] == "btn_menu" for b in mock_buttons.call_args[0][2])
 
-    # 4G: Si el cliente no tiene web activa, informar adecuadamente
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+    # 4G: Si el cliente no tiene web activa, informar con botón btn_menu
+    with patch("bot_engine.send_whatsapp_buttons") as mock_buttons, \
          patch("bot_engine.obtener_web_del_cliente", return_value=None):
         bot_engine.procesar_mensaje(test_wa, "ver web", "Tester")
-        mock_send_msg.assert_called_once()
-        msg_text = mock_send_msg.call_args[0][1]
+        mock_buttons.assert_called_once()
+        msg_text = mock_buttons.call_args[0][1]
         assert "No encontramos una página web activa" in msg_text
+        assert any(b["id"] == "btn_menu" for b in mock_buttons.call_args[0][2])
 
-    print("  ✅ MAIN_MENU incluye MAIN_PRECIOS (2da pos), EDIT_MENU reducido a 9 opciones, MAIN_VER_LINK verificado y retrocompatibilidad asegurada.")
+    # 4H: Validar que el botón interactivo "btn_menu" resetea y abre el Panel de Control desde cualquier estado
+    for st in [bot_engine.WAITING_FOR_PRICE_LIST, bot_engine.WAITING_FOR_TITLE, bot_engine.IDLE]:
+        bot_engine.set_user_state(test_wa, st, {"temp": "data"})
+        with patch("bot_engine.send_whatsapp_list") as mock_send_list:
+            bot_engine.procesar_mensaje(test_wa, "btn_menu", "Tester")
+            mock_send_list.assert_called_once()
+            assert mock_send_list.call_args[0][4] == "Panel de Control"
+            assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    print("  ✅ MAIN_MENU incluye MAIN_PRECIOS (2da pos), EDIT_MENU reducido a 9 opciones, MAIN_VER_LINK y btn_menu verificados.")
 
     # ---------------------------------------------------------
     # TEST 5: Bot WhatsApp FSM - Generación de Borrador y Botones <= 20 chars
@@ -282,7 +297,7 @@ Corte y barba: $20.000"""
         "custom_domain": None
     }
 
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
          patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
          patch("bot_engine.obtener_web_del_cliente", return_value=fake_web):
 
@@ -298,12 +313,14 @@ Corte y barba: $20.000"""
         state = bot_engine.get_user_state(test_wa)
         assert state["estado"] == bot_engine.IDLE
 
-        # Mensaje de éxito con link /precios
-        assert mock_send_msg.called
-        success_msg = mock_send_msg.call_args[0][1]
+        # Mensaje de éxito con link /precios y botón Menú Principal
+        assert mock_send_btns.called
+        success_msg = mock_send_btns.call_args[0][1]
         assert "https://barberia-pro.tuweblista.com.ar/precios" in success_msg
+        btns_sent = mock_send_btns.call_args[0][2]
+        assert any(b["id"] == "btn_menu" for b in btns_sent)
 
-    print("  ✅ Confirmar publicación escribe en website_content, limpia sesión y envía link oficial.")
+    print("  ✅ Confirmar publicación escribe en website_content, limpia sesión y envía link oficial con botón btn_menu.")
 
     # ---------------------------------------------------------
     # TEST 7: Bot WhatsApp FSM - Eliminar / Quitar Lista de Precios
@@ -682,7 +699,7 @@ Corte y barba: $20.000"""
         assert len(draft_promo["escalas"]) == 1
         assert draft_promo["escalas"][0]["descuento"] == 25
 
-    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
          patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
          patch("bot_engine.obtener_web_del_cliente", return_value=web_promo_test):
         
@@ -700,6 +717,8 @@ Corte y barba: $20.000"""
         
         # Sesión reseteada
         assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.IDLE
+        mock_send_btns.assert_called_once()
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
 
     # 10J. Detener Promoción Activa (PROMO_DETENER) y retorno a precios regulares
     web_con_promo_activa = {

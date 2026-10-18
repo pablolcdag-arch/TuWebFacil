@@ -594,7 +594,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
     print(f"DEBUG BOT: Estado actual: {estado_actual}")
     
     # 1. Palabra clave universal de reseteo
-    if texto_limpio in ["menu", "menú", "volver", "inicio", "cancelar"]:
+    if texto_limpio in ["menu", "menú", "volver", "inicio", "cancelar", "btn_menu", "main_menu"]:
         clear_user_state(wa_id)
         procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         return
@@ -873,7 +873,13 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                             content["fotos_servicios"][2] = image_url
                             
                         actualizar_web_content(web_data["version_id"], content)
-                        send_whatsapp_message(wa_id, f"✅ ¡Imagen actualizada con éxito!\n\n🔗 *Refrescá tu web para verla:* https://{web_data['slug']}.tuweblista.com.ar")
+                        msg_img = (f"✅ ¡Imagen actualizada con éxito!\n\n"
+                                   f"🔗 *Refrescá tu web para verla:* https://{web_data['slug']}.tuweblista.com.ar\n\n"
+                                   f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                        buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                        send_whatsapp_buttons(wa_id, msg_img, buttons)
+                        set_user_state(wa_id, IDLE, {})
+                        return
                     else:
                         send_whatsapp_message(wa_id, "⚠️ No encontré tu web en el sistema.")
                 else:
@@ -890,10 +896,15 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 msg = (f"🌐 *Tu Página Web:*\n\n"
                        f"Podés verla y compartirla ingresando acá:\n"
                        f"👉 {web_url}\n\n"
-                       f"💡 _Tip: Copiá este enlace para enviárselo a tus clientes o colocarlo en el perfil de tus redes sociales._")
-                send_whatsapp_message(wa_id, msg)
+                       f"💡 _Tip: Copiá este enlace para enviárselo a tus clientes o colocarlo en el perfil de tus redes sociales._\n\n"
+                       f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                send_whatsapp_buttons(wa_id, msg, buttons)
             else:
-                send_whatsapp_message(wa_id, "⚠️ No encontramos una página web activa vinculada a tu número de teléfono. Escribí *menu* para ver las opciones disponibles.")
+                msg = ("⚠️ No encontramos una página web activa vinculada a tu número de teléfono.\n\n"
+                       "📲 _Tocá el botón abajo o escribí *menu* para ver las opciones disponibles._")
+                buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                send_whatsapp_buttons(wa_id, msg, buttons)
         elif texto_limpio in ["main_precios", "precios", "promos", "promociones", "lista de precios"]:
             mostrar_menu_precios(wa_id)
         elif texto_limpio == "main_soporte" or texto_limpio == "main_contact":
@@ -973,8 +984,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    "• *Foto Principal (Hero):* Horizontal apaisada (16:9) aprox 1920x1080 px.\n"
                    "• *Logo y Servicios:* Cuadradas (1:1) aprox 800x800 px.\n\n"
                    "📸 *¡Es súper fácil cambiar las fotos!*\n"
-                   "Simplemente *enviame la foto por este chat ahora mismo* y te preguntaremos dónde querés ubicarla.")
-            send_whatsapp_message(wa_id, msg)
+                   "Simplemente *enviame la foto por este chat ahora mismo* y te preguntaremos dónde querés ubicarla.\n\n"
+                   "📲 _O tocá el botón abajo si preferís volver al panel de control:_")
+            buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+            send_whatsapp_buttons(wa_id, msg, buttons)
             set_user_state(wa_id, IDLE, {})
         elif texto_limpio in ["edit_precios", "precios", "lista de precios", "7"]:
             mostrar_menu_precios(wa_id)
@@ -1311,8 +1324,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             
             msg = (f"¡Perfecto! Para confirmar el traspaso, por favor pedile al nuevo administrador ({nuevo_numero}) que me envíe un mensaje por WhatsApp diciendo exactamente esto:\n\n"
                    f"*{codigo_mudanza}*\n\n"
-                   "Una vez que reciba ese mensaje, la web se transferirá automáticamente.")
-            send_whatsapp_message(wa_id, msg)
+                   f"Una vez que reciba ese mensaje, la web se transferirá automáticamente.\n\n"
+                   f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+            buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+            send_whatsapp_buttons(wa_id, msg, buttons)
             set_user_state(wa_id, IDLE, {})
         except Exception as e:
             logging.error(f"Error saving transfer: {e}")
@@ -1338,7 +1353,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         conn.commit()
         conn.close()
         
-        send_whatsapp_message(wa_id, "✅ Tu mensaje fue enviado con éxito. En el transcurso del día un administrador revisará tu consulta y te responderá por acá.")
+        msg_confirm = ("✅ Tu mensaje fue enviado con éxito. En el transcurso del día un administrador revisará tu consulta y te responderá por acá.\n\n"
+                       "📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+        buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+        send_whatsapp_buttons(wa_id, msg_confirm, buttons)
         send_whatsapp_message("5491134710787", f"✉️ NUEVO MENSAJE DE {nombre} ({wa_id}):\n\n{texto}\n\nRevisá el dashboard para contestarle.")
         set_user_state(wa_id, IDLE, {})
 
@@ -1394,8 +1412,9 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                     msg = (f"✅ ¡Lista de precios publicada con éxito! 🎉\n\n"
                            f"Tus clientes ya pueden ver tus precios actualizados en:\n"
                            f"🔗 {public_url}\n\n"
-                           f"Escribí *menu* cuando quieras hacer otro cambio.")
-                    send_whatsapp_message(wa_id, msg)
+                           f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                    buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                    send_whatsapp_buttons(wa_id, msg, buttons)
                 else:
                     send_whatsapp_message(wa_id, "❌ Hubo un error al guardar tu lista de precios en la base de datos.")
             else:
@@ -1551,11 +1570,12 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                         clear_user_state(wa_id)
                         slug = web_info.get("slug", "mi-web")
                         public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
-                        msg = (f"🎉 ¡Promoción activada con éxito en tu web!\n\n"
-                               f"Tus clientes ya pueden ver los descuentos vigentes en:\n"
+                        msg = (f"🎉 ¡Promoción activada y publicada con éxito en tu web!\n\n"
+                               f"Tus clientes ya verán los precios tachados, el banner de jornada y los descuentos en vivo.\n\n"
                                f"🔗 {public_url}\n\n"
-                               f"💡 _Si completás tus turnos y querés frenar la promo antes de tiempo, entrá a Lista de Precios y elegí *Detener Promoción*._")
-                        send_whatsapp_message(wa_id, msg)
+                               f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                        buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                        send_whatsapp_buttons(wa_id, msg, buttons)
                     else:
                         send_whatsapp_message(wa_id, "❌ Hubo un error al guardar la promoción en la base de datos.")
                 else:

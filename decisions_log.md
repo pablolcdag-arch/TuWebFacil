@@ -221,3 +221,19 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   2. En `scripts/utils/test_price_list_backend.py`, se ampliaron los tests unitarios dentro del Test 4 (4E, 4F, 4G) cubriendo la entrega bajo subdominio, dominio propio y el fallback sin web registrada (100% PASS).
 - **Razón:** La opción enviaba un texto estático que prometía el enlace temporal pero omitía la consulta a Supabase y la URL final, impidiendo a los comerciantes acceder rápidamente a su web desde WhatsApp.
 - **Impacto:** Entrega inmediata y precisa del enlace web (demo o publicada) en un solo toque desde el menú principal.
+
+## [18/10/2026] — Erradicación de Mensajes Muertos (Dead-Ends): Botón Interactivo Menú Principal
+- **Decisión:**
+  1. En `bot_engine.py`, se estandarizó la entrega de botones interactivos (`send_whatsapp_buttons`) incorporando `[ 📱 Menú Principal ]` (`id: "btn_menu"`, 16 caracteres, cumpliendo estrictamente con el límite $\le 20$ de Meta) y la correspondiente leyenda de texto en los 6 flujos informativos y de confirmación del bot:
+     - `MAIN_VER_LINK`: Entrega de link web (éxito y fallback).
+     - `WAITING_FOR_ADMIN_MESSAGE`: Confirmación de mensaje recibido por soporte.
+     - `CONFIRM_PRICE_LIST_DRAFT`: Confirmación de publicación de lista de precios.
+     - `CONFIRM_PROMO_DRAFT`: Confirmación de activación y publicación de promoción.
+     - `WAITING_FOR_TRANSFER_PHONE`: Entrega de código `MUDANZA-XXXX`.
+     - `EDIT_IMAGENES`: Instructivo de subida y confirmación de foto actualizada.
+  2. En el inicio de `procesar_mensaje`, se incorporó `btn_menu` y `main_menu` a la lista de escape universal:
+     `if texto_limpio in ["menu", "menú", "volver", "inicio", "cancelar", "btn_menu", "main_menu"]:`
+     Garantiza que al tocar el botón en WhatsApp se limpie cualquier sesión intermedia en SQLite y se despliegue inmediatamente el Panel de Control.
+  3. En `scripts/utils/test_price_list_backend.py`, se ampliaron los tests 4E, 4F, 4G, 4H, 6B y 10I verificando la presencia del botón `btn_menu` y la reactividad universal ante su pulsación (100% PASS).
+- **Razón:** En el diseño de experiencia conversacional (UX), dejar mensajes terminales sin un llamado a la acción (Call To Action) claro genera fricción y desorienta al usuario. Incorporar el botón interactivo permite regresar al menú en un solo toque en el celular sin necesidad de tipear.
+- **Impacto:** Navegación ergonómica, continua y sin callejones sin salida en toda la interacción con el bot.
