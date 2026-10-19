@@ -661,20 +661,35 @@
             const mobileCardsContainer = document.getElementById('mobile-price-cards');
             const tabPills = document.querySelectorAll('.price-tab-pill');
             let currentMobileCol = columnasPago && columnasPago.length > 0 ? columnasPago[0] : 'Efectivo';
+            let currentEffectiveDiscount = 0;
+            const selectedServices = new Map();
 
             function updateMobileCardPrice(card, colName) {
                 const priceValEl = card.querySelector('.price-value');
                 if (!priceValEl) return;
+                const sName = card.getAttribute('data-service') || '';
                 let regPrices = {};
-                let discPrices = {};
                 try {
-                    regPrices = JSON.parse(card.getAttribute('data-regular-prices') || '{}');
-                    discPrices = JSON.parse(card.getAttribute('data-discounted-prices') || card.getAttribute('data-prices') || '{}');
+                    regPrices = JSON.parse(card.getAttribute('data-regular-prices') || card.getAttribute('data-prices') || '{}');
                 } catch(e) {}
+                const isSelected = selectedServices && selectedServices.has(sName);
                 const regVal = getPriceForCol(regPrices, colName);
-                const discVal = getPriceForCol(discPrices, colName);
 
-                if (activeDiscount > 0 && regVal && regVal !== '-') {
+                if (isSelected && currentEffectiveDiscount > 0 && regVal && regVal !== '-') {
+                    const discPrices = getDiscountedPricesObject(regPrices, currentEffectiveDiscount);
+                    const discVal = getPriceForCol(discPrices, colName);
+                    priceValEl.innerHTML = `
+                        <div class="flex flex-col">
+                            <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
+                            <div class="flex items-center gap-1.5 mt-0.5">
+                                <span class="font-extrabold text-xl text-emerald-600 tracking-tight">${discVal}</span>
+                                <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">-${currentEffectiveDiscount}% OFF</span>
+                            </div>
+                        </div>
+                    `;
+                } else if ((!isSelected || currentEffectiveDiscount === 0) && activeDiscount > 0 && regVal && regVal !== '-') {
+                    const discPrices = getDiscountedPricesObject(regPrices, activeDiscount);
+                    const discVal = getPriceForCol(discPrices, colName);
                     priceValEl.innerHTML = `
                         <div class="flex flex-col">
                             <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
@@ -685,8 +700,77 @@
                         </div>
                     `;
                 } else {
-                    priceValEl.textContent = (activeDiscount > 0 && discVal && discVal !== '-') ? discVal : regVal;
+                    priceValEl.textContent = regVal || '-';
                 }
+            }
+
+            function updateRowsAndCardsPrices(effectiveDiscount) {
+                currentEffectiveDiscount = effectiveDiscount;
+
+                // 1. Desktop: actualizar celdas de la tabla
+                document.querySelectorAll('.price-table-row').forEach(row => {
+                    const sName = row.getAttribute('data-service') || '';
+                    let regPrices = {};
+                    try {
+                        regPrices = JSON.parse(row.getAttribute('data-regular-prices') || row.getAttribute('data-prices') || '{}');
+                    } catch(e) {}
+
+                    const isSelected = selectedServices.has(sName);
+
+                    if (isSelected && effectiveDiscount > 0) {
+                        const discPrices = getDiscountedPricesObject(regPrices, effectiveDiscount);
+                        row.querySelectorAll('.desktop-price-cell').forEach(cell => {
+                            const col = cell.getAttribute('data-col') || '';
+                            const regVal = getPriceForCol(regPrices, col);
+                            const discVal = getPriceForCol(discPrices, col);
+                            if (regVal && regVal !== '-') {
+                                cell.innerHTML = `
+                                    <div class="flex flex-col items-center justify-center">
+                                        <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span class="font-extrabold text-emerald-600 text-sm md:text-base">${discVal}</span>
+                                            <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">-${effectiveDiscount}% OFF</span>
+                                        </div>
+                                    </div>
+                                `;
+                            } else {
+                                cell.textContent = '-';
+                            }
+                        });
+                    } else if (!isSelected && activeDiscount > 0) {
+                        const baseDiscPrices = getDiscountedPricesObject(regPrices, activeDiscount);
+                        row.querySelectorAll('.desktop-price-cell').forEach(cell => {
+                            const col = cell.getAttribute('data-col') || '';
+                            const regVal = getPriceForCol(regPrices, col);
+                            const discVal = getPriceForCol(baseDiscPrices, col);
+                            if (regVal && regVal !== '-') {
+                                cell.innerHTML = `
+                                    <div class="flex flex-col items-center justify-center">
+                                        <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span class="font-extrabold text-emerald-600 text-sm md:text-base">${discVal}</span>
+                                            <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">${activeDiscount}% OFF</span>
+                                        </div>
+                                    </div>
+                                `;
+                            } else {
+                                cell.textContent = '-';
+                            }
+                        });
+                    } else {
+                        // Sin descuento aplicable
+                        row.querySelectorAll('.desktop-price-cell').forEach(cell => {
+                            const col = cell.getAttribute('data-col') || '';
+                            const regVal = getPriceForCol(regPrices, col);
+                            cell.textContent = regVal || '-';
+                        });
+                    }
+                });
+
+                // 2. Mobile: actualizar tarjetas
+                document.querySelectorAll('.price-item-card').forEach(card => {
+                    updateMobileCardPrice(card, currentMobileCol);
+                });
             }
 
             function applyRealtimeDiscounts() {
@@ -761,8 +845,6 @@
             applyRealtimeDiscounts();
 
             // --- ESTADO DE SELECCIÓN MÚLTIPLE (CARRITO) ---
-            const selectedServices = new Map();
-
             const multiBar = document.getElementById('price-multi-bar');
             const multiCountEl = document.getElementById('multi-count');
             const multiTotalsSummaryEl = document.getElementById('multi-totals-summary');
@@ -806,6 +888,8 @@
                     document.querySelectorAll('.promo-zone-pill').forEach(pill => {
                         pill.classList.remove('bg-emerald-500/15', 'border-emerald-500/40', 'ring-1', 'ring-emerald-400/30');
                     });
+                    currentEffectiveDiscount = 0;
+                    updateRowsAndCardsPrices(0);
                     return;
                 }
 
@@ -861,6 +945,10 @@
                     effectiveDiscount = 0;
                     discountExplanation = '';
                 }
+
+                // Actualizar precios reactivos en filas desktop y tarjetas mobile
+                currentEffectiveDiscount = effectiveDiscount;
+                updateRowsAndCardsPrices(effectiveDiscount);
 
                 // 3. Calcular totales brutos sumando los precios de los servicios seleccionados y aplicando effectiveDiscount
                 const grossTotalsByCol = {};
@@ -1200,6 +1288,8 @@
                     this.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
                     this.classList.add('active', 'bg-primary', 'text-white', 'shadow-primary/30');
                     
+                    currentMobileCol = colName;
+
                     document.querySelectorAll('.price-item-card').forEach(card => {
                         updateMobileCardPrice(card, colName);
                         const badgeEl = card.querySelector('.price-method-badge');
@@ -1217,7 +1307,6 @@
                         }
                     });
 
-                    currentMobileCol = colName;
                     updateStickyBar();
                 });
             });

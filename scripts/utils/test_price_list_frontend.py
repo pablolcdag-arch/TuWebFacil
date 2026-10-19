@@ -463,7 +463,13 @@ def run_tests():
     assert 'Promociones aplicadas:' in html_zonas_acum, "El script JS debe formatear el mensaje con Promociones aplicadas cuando se acumulan"
     assert 'Mayor beneficio' in html_zonas_acum, "El script JS debe formatear la leyenda de Mayor beneficio cuando no se acumulan"
 
-    # 8.E: Retrocompatibilidad cuando promocion_zonas está inactiva o ausente
+    # 8.E: Verificación de Actualización Reactiva de Precios en Filas y Tarjetas para Servicios Seleccionados
+    assert 'function updateRowsAndCardsPrices' in html_zonas_acum, "El script JS debe definir updateRowsAndCardsPrices"
+    assert '-${effectiveDiscount}% OFF' in html_zonas_acum, "El script JS debe formatear el badge de descuento para servicios seleccionados con -${effectiveDiscount}% OFF"
+    assert 'selectedServices.has' in html_zonas_acum, "El script JS debe verificar selectedServices.has para actualizar las filas/tarjetas"
+    assert 'updateMobileCardPrice(card, currentMobileCol)' in html_zonas_acum, "El script JS debe sincronizar las tarjetas móviles con currentMobileCol"
+
+    # 8.F: Retrocompatibilidad cuando promocion_zonas está inactiva o ausente
     ctx_inactive_zonas = build_base_context()
     prices_inactive_zonas = build_sample_price_list()
     prices_inactive_zonas["promocion_zonas"] = {
@@ -474,7 +480,7 @@ def run_tests():
     ctx_inactive_zonas["web_content"]["lista_precios"] = prices_inactive_zonas
     html_inactive_zonas = template.render(**ctx_inactive_zonas)
     assert 'id="promo-zonas-container"' not in html_inactive_zonas, "No debe renderizar #promo-zonas-container si activa=False"
-    print("  ✅ Banner de Combo de Zonas, píldoras, badges de acumulación y lógica de cálculo en JS verificados al 100%.")
+    print("  ✅ Banner de Combo de Zonas, píldoras, badges de acumulación, lógica de cálculo y actualización reactiva de filas/tarjetas en JS verificados al 100%.")
 
     print("\n" + "=" * 75)
     print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1 PASARON CON ÉXITO (100% PASS)")

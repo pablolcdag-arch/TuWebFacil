@@ -283,3 +283,16 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   5. Cero regresiones en `test_day27_flow.py` y `test_paused_flow.py`.
 - **Razón:** Permitir a los negocios de estética, depilación, belleza y servicios armar promociones por combos de zonas/servicios directamente desde WhatsApp, aumentando el ticket promedio de compra con una experiencia táctil intuitiva y transparente tanto para el comerciante como para el cliente final.
 - **Impacto:** Motor comercial completo en la lista de precios con soporte para promociones de calendario (fecha), promociones por volumen (zonas) y reglas matemáticas de combinación sin fricciones.
+
+## [18/10/2026] — Actualización Reactiva de Precios en Filas y Tarjetas de Zonas Seleccionadas
+- **Decisión:**
+  1. En `templates/client_template.html`, se implementó la función reactiva `updateRowsAndCardsPrices()` vinculada al ciclo de vida del carrito multi-servicio (`updateStickyBar()`):
+     - **Servicios seleccionados (`selectedServices.has(sName)`):** Cuando se activa un descuento efectivo (`effectiveDiscount > 0`, ya sea por promo fecha, combo de zonas o combinación acumulable), las celdas de precio de la tabla desktop (`.desktop-price-cell`) y el valor de las tarjetas móviles (`.price-value`) actualizan su contenido en tiempo real mostrando el precio base regular tachado (`line-through`), el nuevo precio bonificado en negrita esmeralda (`text-emerald-600 font-extrabold`) y el badge actualizado `-${effectiveDiscount}% OFF`.
+     - **Servicios no seleccionados (`!selectedServices.has(sName)`):** Mantienen el precio base con el descuento de fecha (`activeDiscount`) si la jornada está activa, o el precio de lista regular sin tachados si no hay promo fecha.
+     - **Limpieza / Deselección:** Al desmarcar los checkboxes o presionar "Limpiar" (`multiClearBtn`), todas las filas y tarjetas retornan instantáneamente a su estado de reposo base.
+     - **Sincronización táctil mobile:** Se sincronizó `updateMobileCardPrice()` para evaluar si la tarjeta pertenece a un servicio seleccionado al conmutar entre pestañas de modalidades de pago (`currentMobileCol`).
+  2. En `scripts/utils/test_price_list_frontend.py`, se ampliaron las aserciones de `[TEST 8]` auditando la reactividad visual en celdas y tarjetas ante la selección de zonas bajo `effectiveDiscount` (100% PASS, Tests 1 al 8).
+  3. Cero regresiones en `test_price_list_backend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
+- **Razón:** Proporcionar al cliente final retroalimentación visual inmediata en la misma lista: al tildar la segunda o tercera zona ve cómo los precios de las zonas que acaba de elegir bajan al instante en la pantalla, maximizando la percepción de ahorro y la conversión a pedidos por WhatsApp.
+- **Impacto:** Experiencia de usuario (UX) de nivel e-commerce moderno en la lista interactiva de servicios.
+
