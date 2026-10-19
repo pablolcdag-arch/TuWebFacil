@@ -241,17 +241,17 @@ horario            ("ocultar" = no mostrar)
 ubicacion_detectada, mapa{lat, lon, zoom}, google_maps,
 whatsapp_contacto, email_contacto ("ocultar" = no mostrar), instagram ("" = no mostrar),
 plan_type,
-lista_precios{titulo, columnas_pago[], items[{servicio, precios{efectivo, transferencia, tarjeta...}}], promocion_fecha{titulo, activa, escalas[{hasta, hasta_display, descuento, label}]}}
+lista_precios{titulo, columnas_pago[], items[{servicio, precios{efectivo, transferencia, tarjeta...}}], promocion_fecha{titulo, activa, escalas[{hasta, hasta_display, descuento, label}]}, promocion_zonas{titulo, activa, acumulable, escalas[{cantidad, descuento, label}]}}
 ```
 
 ### Máquina de Estados del Bot (Persistencia en SQLite `user_sessions` + Caché en RAM)
-`IDLE`, `MAIN_MENU`, `EDIT_MENU`, `EDIT_MENU_SERVICIOS`, `WAITING_FOR_TITLE`, `WAITING_FOR_SUBTITLE`, `WAITING_FOR_SERVICE_TITLE`, `WAITING_FOR_SERVICE_DESC`, `WAITING_FOR_LOCATION`, `WAITING_FOR_SCHEDULE`, `WAITING_FOR_IMAGE_ROLE`, `WAITING_FOR_WHATSAPP`, `WAITING_FOR_EMAIL`, `WAITING_FOR_INSTAGRAM`, `WAITING_FOR_DOMAIN_NAME`, `WAITING_FOR_RECEIPT`, `WAITING_FOR_TRANSFER_PHONE`, `WAITING_FOR_ADMIN_MESSAGE`, `WAITING_FOR_PRICE_LIST`, `CONFIRM_PRICE_LIST_DRAFT`, `WAITING_FOR_PRICE_MENU_OPTION`, `WAITING_FOR_PROMO_TITLE`, `WAITING_FOR_PROMO_DISCOUNT_1`, `WAITING_FOR_PROMO_DATE_1`, `WAITING_FOR_PROMO_TIER2_CHOICE`, `WAITING_FOR_PROMO_DISCOUNT_2`, `WAITING_FOR_PROMO_DATE_2`, `CONFIRM_PROMO_DRAFT` (`WAITING_FOR_PLAN_SELECTION` está declarado pero no se usa).
+`IDLE`, `MAIN_MENU`, `EDIT_MENU`, `EDIT_MENU_SERVICIOS`, `WAITING_FOR_TITLE`, `WAITING_FOR_SUBTITLE`, `WAITING_FOR_SERVICE_TITLE`, `WAITING_FOR_SERVICE_DESC`, `WAITING_FOR_LOCATION`, `WAITING_FOR_SCHEDULE`, `WAITING_FOR_IMAGE_ROLE`, `WAITING_FOR_WHATSAPP`, `WAITING_FOR_EMAIL`, `WAITING_FOR_INSTAGRAM`, `WAITING_FOR_DOMAIN_NAME`, `WAITING_FOR_RECEIPT`, `WAITING_FOR_TRANSFER_PHONE`, `WAITING_FOR_ADMIN_MESSAGE`, `WAITING_FOR_PRICE_LIST`, `CONFIRM_PRICE_LIST_DRAFT`, `WAITING_FOR_PRICE_MENU_OPTION`, `WAITING_FOR_PROMO_TITLE`, `WAITING_FOR_PROMO_DISCOUNT_1`, `WAITING_FOR_PROMO_DATE_1`, `WAITING_FOR_PROMO_TIER2_CHOICE`, `WAITING_FOR_PROMO_DISCOUNT_2`, `WAITING_FOR_PROMO_DATE_2`, `CONFIRM_PROMO_DRAFT`, `WAITING_FOR_PROMO_ZONAS_DISCOUNT_1`, `WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE`, `WAITING_FOR_PROMO_ZONAS_DISCOUNT_2`, `WAITING_FOR_PROMO_ZONAS_ACUMULABLE`, `CONFIRM_PROMO_ZONAS_DRAFT`, `WAITING_FOR_STOP_PROMO_CHOICE` (`WAITING_FOR_PLAN_SELECTION` está declarado pero no se usa).
 - **Persistencia:** Tabla `user_sessions` en `messages.db` (`phone`, `estado`, `temp_data`, `updated_at`). Helpers `get_user_state()`, `set_user_state()`, `clear_user_state()`. Mantiene caché en memoria en `user_states`.
-- **Palabras de escape universales:** `menu`, `menú`, `volver`, `inicio`, `cancelar`.
+- **Palabras de escape universales:** `menu`, `menú`, `volver`, `inicio`, `cancelar`, `btn_menu`.
 - **Disparador del panel:** cualquier texto que contenga `confirmar mi web` (los links de la web demo envían "Quiero confirmar mi web").
 - **IDs de opciones** (`MAIN_*`, `EDIT_*`, `FOTO_*`, `DOMINIO_*`, `PRECIOS_*`, `PROMO_*`) se comparan en minúsculas: son contrato con WhatsApp.
 - **Comandos de eliminación en WAITING_FOR_PRICE_LIST:** `quitar`, `borrar`, `eliminar`, `ocultar` (remueven `lista_precios` de `website_content` y confirman al usuario).
-- **Comandos de detención de promo:** `detener promo`, `frenar promo`, `pausar promo`, `quitar promo` (remueven `promocion_fecha` de `lista_precios` y restauran precios regulares).
+- **Comandos de detención de promo:** `detener promo`, `frenar promo`, `pausar promo`, `quitar promo` (desactivan `promocion_fecha` y/o `promocion_zonas` y restauran precios regulares).
 - El estado **persiste ante reinicios** de `tuwebfacil_receiver`.
 
 ---

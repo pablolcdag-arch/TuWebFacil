@@ -370,6 +370,112 @@ def run_tests():
     assert 'id="promo-banner-container"' not in html_inactive, "No debe renderizar #promo-banner-container si activa=False"
     print("  ✅ Banner de Jornada, píldoras de escalas, lógica JS de tachados y retrocompatibilidad verificadas al 100%.")
 
+    # -------------------------------------------------------------------------
+    # TEST 8: Promoción por Zonas / Combos y Regla de Acumulación
+    # -------------------------------------------------------------------------
+    print("\n[TEST 8] Verificando Banner de Combo de Zonas, Píldoras y Lógica de Acumulación...")
+    
+    # 8.A: Renderizado con promocion_zonas activa y acumulable=True
+    ctx_zonas_acum = build_base_context()
+    prices_zonas_acum = build_sample_price_list()
+    prices_zonas_acum["promocion_zonas"] = {
+        "titulo": "Promo Combos de Zonas",
+        "activa": True,
+        "acumulable": True,
+        "escalas": [
+            {
+                "cantidad": 2,
+                "descuento": 10,
+                "label": "2 zonas: 10% OFF"
+            },
+            {
+                "cantidad": 3,
+                "descuento": 20,
+                "label": "3 o más zonas: 20% OFF"
+            }
+        ]
+    }
+    ctx_zonas_acum["web_content"]["lista_precios"] = prices_zonas_acum
+    html_zonas_acum = template.render(**ctx_zonas_acum)
+
+    # 1. Presencia del contenedor/badge de combo de zonas
+    assert 'id="promo-zonas-container"' in html_zonas_acum, "Debe existir el contenedor #promo-zonas-container cuando hay promocion_zonas activa"
+    assert 'Combo de Zonas' in html_zonas_acum, "Debe mostrar el badge 'Combo de Zonas'"
+    assert 'Promo Combos de Zonas' in html_zonas_acum, "Debe mostrar el título de la promoción por zonas"
+    assert 'id="promo-zonas-scales-list"' in html_zonas_acum, "Debe incluir el contenedor #promo-zonas-scales-list"
+
+    # 2. Etiquetas de escalas y píldoras .promo-zone-pill
+    assert 'promo-zone-pill' in html_zonas_acum, "Debe contener elementos con clase 'promo-zone-pill'"
+    assert 'data-cantidad="2"' in html_zonas_acum, "Debe incluir data-cantidad='2' en la escala 1"
+    assert 'data-descuento="10"' in html_zonas_acum, "Debe incluir data-descuento='10' en la escala 1"
+    assert '2 zonas: 10% OFF' in html_zonas_acum, "Debe mostrar la etiqueta '2 zonas: 10% OFF'"
+    assert 'data-cantidad="3"' in html_zonas_acum, "Debe incluir data-cantidad='3' en la escala 2"
+    assert 'data-descuento="20"' in html_zonas_acum, "Debe incluir data-descuento='20' en la escala 2"
+    assert '3 o más zonas: 20% OFF' in html_zonas_acum, "Debe mostrar la etiqueta '3 o más zonas: 20% OFF'"
+
+    # 3. Indicador de acumulable
+    assert '¡Acumulable con la Promo por Fecha!' in html_zonas_acum, "Debe mostrar el indicador de que es acumulable"
+
+    # 8.B: Renderizado con promocion_zonas activa y acumulable=False
+    ctx_zonas_no_acum = build_base_context()
+    prices_zonas_no_acum = build_sample_price_list()
+    prices_zonas_no_acum["promocion_zonas"] = {
+        "titulo": "Promo Combos de Zonas",
+        "activa": True,
+        "acumulable": False,
+        "escalas": [
+            {
+                "cantidad": 2,
+                "descuento": 15,
+                "label": "2 zonas: 15% OFF"
+            }
+        ]
+    }
+    ctx_zonas_no_acum["web_content"]["lista_precios"] = prices_zonas_no_acum
+    html_zonas_no_acum = template.render(**ctx_zonas_no_acum)
+
+    # Indicador de no acumulable
+    assert 'No acumulable con otras promociones (aplica el mayor descuento)' in html_zonas_no_acum, \
+        "Debe mostrar el indicador de que no es acumulable con otras promociones"
+
+    # 8.C: Coexistencia con promocion_fecha activa
+    ctx_both = build_base_context()
+    prices_both = build_sample_price_list()
+    prices_both["promocion_fecha"] = {
+        "titulo": "Jornada Láser 17 de Noviembre",
+        "activa": True,
+        "escalas": [
+            {"hasta": "2026-10-27", "hasta_display": "27 de Octubre de 2026", "descuento": 30, "label": "30% OFF"}
+        ]
+    }
+    prices_both["promocion_zonas"] = prices_zonas_acum["promocion_zonas"]
+    ctx_both["web_content"]["lista_precios"] = prices_both
+    html_both = template.render(**ctx_both)
+    assert 'id="promo-banner-container"' in html_both, "Debe coexistir #promo-banner-container"
+    assert 'id="promo-zonas-container"' in html_both, "Debe coexistir #promo-zonas-container"
+
+    # 8.D: Verificación de JavaScript: zoneDiscount, effectiveDiscount y regla de acumulación
+    assert 'const promoZonasData =' in html_zonas_acum, "El script JS debe extraer promoZonasData"
+    assert 'zoneDiscount' in html_zonas_acum, "El script JS debe calcular zoneDiscount"
+    assert 'effectiveDiscount' in html_zonas_acum, "El script JS debe calcular effectiveDiscount"
+    assert 'promoZonasData.acumulable' in html_zonas_acum, "El script JS debe verificar promoZonasData.acumulable"
+    assert 'discountExplanation' in html_zonas_acum, "El script JS debe construir discountExplanation"
+    assert 'Promociones aplicadas:' in html_zonas_acum, "El script JS debe formatear el mensaje con Promociones aplicadas cuando se acumulan"
+    assert 'Mayor beneficio' in html_zonas_acum, "El script JS debe formatear la leyenda de Mayor beneficio cuando no se acumulan"
+
+    # 8.E: Retrocompatibilidad cuando promocion_zonas está inactiva o ausente
+    ctx_inactive_zonas = build_base_context()
+    prices_inactive_zonas = build_sample_price_list()
+    prices_inactive_zonas["promocion_zonas"] = {
+        "titulo": "Promo Inactiva",
+        "activa": False,
+        "escalas": []
+    }
+    ctx_inactive_zonas["web_content"]["lista_precios"] = prices_inactive_zonas
+    html_inactive_zonas = template.render(**ctx_inactive_zonas)
+    assert 'id="promo-zonas-container"' not in html_inactive_zonas, "No debe renderizar #promo-zonas-container si activa=False"
+    print("  ✅ Banner de Combo de Zonas, píldoras, badges de acumulación y lógica de cálculo en JS verificados al 100%.")
+
     print("\n" + "=" * 75)
     print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1 PASARON CON ÉXITO (100% PASS)")
     print("=" * 75)

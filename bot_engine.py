@@ -53,6 +53,12 @@ WAITING_FOR_PROMO_TIER2_CHOICE = "WAITING_FOR_PROMO_TIER2_CHOICE"
 WAITING_FOR_PROMO_DISCOUNT_2 = "WAITING_FOR_PROMO_DISCOUNT_2"
 WAITING_FOR_PROMO_DATE_2 = "WAITING_FOR_PROMO_DATE_2"
 CONFIRM_PROMO_DRAFT = "CONFIRM_PROMO_DRAFT"
+WAITING_FOR_PROMO_ZONAS_DISCOUNT_1 = "WAITING_FOR_PROMO_ZONAS_DISCOUNT_1"
+WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE = "WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE"
+WAITING_FOR_PROMO_ZONAS_DISCOUNT_2 = "WAITING_FOR_PROMO_ZONAS_DISCOUNT_2"
+WAITING_FOR_PROMO_ZONAS_ACUMULABLE = "WAITING_FOR_PROMO_ZONAS_ACUMULABLE"
+CONFIRM_PROMO_ZONAS_DRAFT = "CONFIRM_PROMO_ZONAS_DRAFT"
+WAITING_FOR_STOP_PROMO_CHOICE = "WAITING_FOR_STOP_PROMO_CHOICE"
 
 # Botón interactivo universal para evitar dead-ends
 BTN_VOLVER_MENU = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
@@ -416,13 +422,14 @@ def mostrar_menu_precios(wa_id):
         lp = web_info["content"].get("lista_precios")
         if lp and isinstance(lp, dict) and lp.get("items"):
             tiene_lista = True
-            if lp.get("promocion_fecha"):
+            if lp.get("promocion_fecha") or lp.get("promocion_zonas"):
                 tiene_promo = True
 
     if tiene_lista:
         options = [
             {"id": "PRECIOS_ACTUALIZAR", "title": "📄 Actualizar Precios", "description": "Subir nuevo Excel, PDF o texto"},
-            {"id": "PROMO_FECHA_START", "title": "📅 Promo por Fecha", "description": "Reserva anticipada con % de descuento"}
+            {"id": "PROMO_FECHA_START", "title": "📅 Promo por Fecha", "description": "Reserva anticipada con % de descuento"},
+            {"id": "PROMO_ZONAS_START", "title": "🎯 Promo por Zonas", "description": "Descuento por cantidad de zonas"}
         ]
         if tiene_promo:
             options.append({"id": "PROMO_DETENER", "title": "⏹️ Detener Promo Activa", "description": "Quitar descuento y volver a precios normales"})
@@ -446,7 +453,7 @@ def mostrar_menu_precios(wa_id):
         set_user_state(wa_id, WAITING_FOR_PRICE_LIST)
 
 def detener_promocion_activa(wa_id, nombre):
-    """Detiene y retira la promoción por fecha activa de la web del cliente."""
+    """Detiene y retira las promociones activas (fecha y/o zonas) de la web del cliente."""
     web_info = obtener_web_del_cliente(wa_id)
     if not web_info or not web_info.get("content"):
         send_whatsapp_message(wa_id, "⚠️ No encontramos tu página web en el sistema.")
@@ -455,7 +462,29 @@ def detener_promocion_activa(wa_id, nombre):
 
     content = web_info["content"]
     lp = content.get("lista_precios")
-    if lp and isinstance(lp, dict) and lp.get("promocion_fecha"):
+    if not lp or not isinstance(lp, dict):
+        send_whatsapp_message(wa_id, "ℹ️ Tu lista de precios no tiene ninguna promoción activa en este momento.")
+        set_user_state(wa_id, MAIN_MENU, {})
+        procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+        return False
+
+    tiene_fecha = bool(lp.get("promocion_fecha"))
+    tiene_zonas = bool(lp.get("promocion_zonas"))
+
+    if tiene_fecha and tiene_zonas:
+        msg = ("🎯 *Detener Promociones Activas*\n\n"
+               "Tenés activas tanto la *Promo por Fecha* como la *Promo por Zonas*.\n\n"
+               "¿Cuál de ellas querés frenar?")
+        buttons = [
+            {"id": "frenar_promo_fecha", "title": "📅 Frenar Fecha"},
+            {"id": "frenar_promo_zonas", "title": "🎯 Frenar Zonas"},
+            {"id": "frenar_promo_ambas", "title": "🛑 Frenar Ambas"}
+        ]
+        send_whatsapp_buttons(wa_id, msg, buttons)
+        set_user_state(wa_id, WAITING_FOR_STOP_PROMO_CHOICE, {})
+        return True
+
+    elif tiene_fecha:
         lp.pop("promocion_fecha", None)
         if actualizar_web_content(web_info["version_id"], content):
             slug = web_info.get("slug", "mi-web")
@@ -471,6 +500,25 @@ def detener_promocion_activa(wa_id, nombre):
             send_whatsapp_message(wa_id, "❌ Hubo un error al actualizar tu web en la base de datos.")
             set_user_state(wa_id, MAIN_MENU, {})
             return False
+
+    elif tiene_zonas:
+        lp.pop("promocion_zonas", None)
+        if actualizar_web_content(web_info["version_id"], content):
+            slug = web_info.get("slug", "mi-web")
+            public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
+            msg = (f"⏹️ ¡Listo! La promoción por zonas fue detenida y retirada de tu web.\n\n"
+                   f"Tus combos volvieron a sus valores regulares sin descuentos adicionales.\n\n"
+                   f"🔗 Refrescá tu web: {public_url}\n\n"
+                   f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+            buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+            send_whatsapp_buttons(wa_id, msg, buttons)
+            set_user_state(wa_id, MAIN_MENU, {})
+            return True
+        else:
+            send_whatsapp_message(wa_id, "❌ Hubo un error al actualizar tu web en la base de datos.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return False
+
     else:
         send_whatsapp_message(wa_id, "ℹ️ Tu lista de precios no tiene ninguna promoción activa en este momento.")
         set_user_state(wa_id, MAIN_MENU, {})
@@ -579,6 +627,108 @@ def generar_borrador_promocion(wa_id, temp_data, nombre):
     buttons = [
         {"id": "CONFIRM_PROMO_OK", "title": "✅ Activar Promo"},
         {"id": "CONFIRM_PROMO_CANCEL", "title": "❌ Cancelar"}
+    ]
+    send_whatsapp_buttons(wa_id, msg, buttons)
+    return True
+
+def generar_borrador_promocion_zonas(wa_id, temp_data, nombre):
+    """
+    Construye la estructura promocion_zonas, inyecta en draft_prices,
+    genera un draft_token seguro y envía mensaje con vista previa y botones.
+    """
+    web_info = obtener_web_del_cliente(wa_id)
+    if not web_info or not web_info.get("content"):
+        send_whatsapp_message(wa_id, "⚠️ No pudimos encontrar tu web en el sistema para asociar la promoción.")
+        set_user_state(wa_id, IDLE, {})
+        return False
+
+    current_lp = web_info["content"].get("lista_precios")
+    if not current_lp or not isinstance(current_lp, dict) or not current_lp.get("items"):
+        send_whatsapp_message(wa_id, "⚠️ Necesitás tener una lista de precios publicada para poder activar una promoción.")
+        set_user_state(wa_id, IDLE, {})
+        return False
+
+    desc_1 = temp_data.get("promo_zonas_desc_1", 10)
+    has_tier2 = "promo_zonas_desc_2" in temp_data
+    desc_2 = temp_data.get("promo_zonas_desc_2")
+    bool_acumulable = temp_data.get("promo_zonas_acumulable", False)
+
+    escalas = [
+        {
+            "cantidad": 2,
+            "descuento": desc_1,
+            "label": f"2 zonas: {desc_1}% OFF"
+        }
+    ]
+    if has_tier2:
+        escalas.append({
+            "cantidad": 3,
+            "descuento": desc_2,
+            "label": f"3 o más zonas: {desc_2}% OFF"
+        })
+
+    promocion_zonas_data = {
+        "titulo": "Promo Combos de Zonas",
+        "activa": True,
+        "acumulable": bool_acumulable,
+        "escalas": escalas
+    }
+
+    draft_prices = json.loads(json.dumps(current_lp))
+    draft_prices["promocion_zonas"] = promocion_zonas_data
+
+    draft_token = secrets.token_hex(4)
+
+    conn = None
+    try:
+        conn = sqlite3.connect(get_db_path(), timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS price_drafts (
+                token TEXT PRIMARY KEY,
+                phone TEXT,
+                draft_prices TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        c.execute("""
+            INSERT OR REPLACE INTO price_drafts (token, phone, draft_prices)
+            VALUES (?, ?, ?)
+        """, (draft_token, wa_id, json.dumps(draft_prices)))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error guardando price_draft de promoción por zonas en SQLite: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+    temp_data["draft_token"] = draft_token
+    temp_data["draft_prices"] = draft_prices
+    temp_data["promocion_zonas_data"] = promocion_zonas_data
+    set_user_state(wa_id, CONFIRM_PROMO_ZONAS_DRAFT, temp_data)
+
+    slug = web_info.get("slug", "mi-web")
+    if web_info.get("custom_domain"):
+        preview_url = f"https://{web_info['custom_domain']}/precios?preview={draft_token}"
+    else:
+        preview_url = f"https://{slug}.tuweblista.com.ar/precios?preview={draft_token}"
+
+    tramo_2_txt = f"🟢 *Tramo 2:* 3 o más zonas ➔ {desc_2}% OFF\n" if has_tier2 else ""
+    acum_txt = "Sí (se suma con promo por fecha)" if bool_acumulable else "No (aplica el descuento mayor)"
+
+    msg = (f"🎉 *¡Borrador de Promo por Zonas generado!*\n\n"
+           f"🎯 *Beneficio por Combos:*\n"
+           f"🟢 *Tramo 1:* 2 zonas ➔ {desc_1}% OFF\n"
+           f"{tramo_2_txt}"
+           f"🔄 *Acumulable con fechas:* {acum_txt}\n\n"
+           f"🔗 *Mirá cómo se ve tu promo y los precios en tu web:*\n"
+           f"{preview_url}\n\n"
+           f"¿Deseás activarla en tu web ahora mismo?")
+
+    buttons = [
+        {"id": "btn_activar_promo_zonas", "title": "✅ Activar Promo"},
+        {"id": "btn_cancelar_promo_zonas", "title": "❌ Cancelar"}
     ]
     send_whatsapp_buttons(wa_id, msg, buttons)
     return True
@@ -728,7 +878,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         return
 
     # 1.8 Interceptar intención de detener promoción activa ("detener promo", "frenar promo", "pausar promo")
-    if any(k in texto_limpio for k in ["detener promo", "frenar promo", "pausar promo", "detener promocion", "pausar promocion"]):
+    if estado_actual != WAITING_FOR_STOP_PROMO_CHOICE and any(k in texto_limpio for k in ["detener promo", "frenar promo", "pausar promo", "detener promocion", "pausar promocion"]):
         detener_promocion_activa(wa_id, nombre)
         return
 
@@ -1485,9 +1635,21 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    "💡 _Escribí *cancelar* para volver al menú anterior._")
             send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_PROMO_TITLE, {})
-        elif texto_limpio in ["promo_detener", "detener promo", "frenar promo", "pausar promo", "detener", "3"]:
+        elif texto_limpio in ["promo_zonas_start", "promo zonas", "zonas", "combos", "promo por zonas", "3"]:
+            web_info = obtener_web_del_cliente(wa_id)
+            if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
+                send_whatsapp_message(wa_id, "⚠️ Necesitás tener una lista de precios publicada antes de configurar una promoción.")
+                set_user_state(wa_id, MAIN_MENU, {})
+                procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+                return
+            msg = ("🎯 *Promoción por Cantidad de Zonas (Combos)*\n\n"
+                   "Paso 1 de 3: ¿De cuánto es el porcentaje de descuento llevando *2 zonas o servicios*?\n\n"
+                   "Escribí solo el número (Por ejemplo: 10 para 10% OFF):")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+            set_user_state(wa_id, WAITING_FOR_PROMO_ZONAS_DISCOUNT_1, {})
+        elif texto_limpio in ["promo_detener", "detener promo", "frenar promo", "pausar promo", "detener", "4"]:
             detener_promocion_activa(wa_id, nombre)
-        elif texto_limpio in ["precios_quitar", "quitar", "borrar", "eliminar", "ocultar", "4"]:
+        elif texto_limpio in ["precios_quitar", "quitar", "borrar", "eliminar", "ocultar", "4", "5"]:
             web_info = obtener_web_del_cliente(wa_id)
             if web_info and web_info.get("content") and "lista_precios" in web_info["content"] and web_info["content"]["lista_precios"]:
                 content = web_info["content"]
@@ -1502,7 +1664,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 send_whatsapp_message(wa_id, "ℹ️ Tu web no tenía ninguna lista de precios publicada.")
             set_user_state(wa_id, MAIN_MENU, {})
             procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
-        elif texto_limpio in ["precios_volver", "volver", "cancelar", "5"]:
+        elif texto_limpio in ["precios_volver", "volver", "cancelar", "5", "6"]:
             set_user_state(wa_id, MAIN_MENU, {})
             procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         else:
@@ -1623,6 +1785,187 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         else:
             send_whatsapp_message(wa_id, "Por favor respondé *Activar* para confirmar la subida de la promo o *Cancelar* para descartar el borrador.")
+
+    elif estado_actual == WAITING_FOR_PROMO_ZONAS_DISCOUNT_1:
+        clean_num = re.sub(r'[^\d]', '', texto)
+        if not clean_num or not (1 <= int(clean_num) <= 99):
+            send_whatsapp_buttons(wa_id, "⚠️ Por favor, ingresá un porcentaje válido entre 1 y 99 (por ejemplo: 10 para 10% OFF):", btn_volver_menu)
+            return
+        desc_1 = int(clean_num)
+        temp_data = {"promo_zonas_desc_1": desc_1}
+        set_user_state(wa_id, WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE, temp_data)
+        msg = (f"¿Querés agregar un 2do tramo con mayor descuento para 3 o más zonas?\n\n"
+               f"(Por ejemplo: 20% OFF llevando 3 o más zonas)")
+        buttons = [
+            {"id": "btn_zonas_t2_si", "title": "➕ Sí, agregar tramo"},
+            {"id": "btn_zonas_t2_no", "title": "🚀 Solo 2 zonas"}
+        ]
+        send_whatsapp_buttons(wa_id, msg, buttons)
+
+    elif estado_actual == WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE:
+        if texto_limpio in ["btn_zonas_t2_no", "no", "solo 2 zonas", "solo 2", "solo", "1"]:
+            current_data = get_user_state(wa_id).get("temp_data", {})
+            set_user_state(wa_id, WAITING_FOR_PROMO_ZONAS_ACUMULABLE, current_data)
+            msg = ("¿Querés que esta promoción por zonas sea *acumulable* con las promociones por fecha (reserva anticipada/jornadas)?\n\n"
+                   "• *Acumulables:* Se suman ambos descuentos.\n"
+                   "• *No acumulables:* Se aplica el mayor descuento al cliente.")
+            buttons = [
+                {"id": "btn_acum_si", "title": "➕ Sí, acumulables"},
+                {"id": "btn_acum_no", "title": "🚫 No acumulables"}
+            ]
+            send_whatsapp_buttons(wa_id, msg, buttons)
+        elif texto_limpio in ["btn_zonas_t2_si", "si", "sí", "agregar", "agregar tramo", "2"]:
+            current_data = get_user_state(wa_id).get("temp_data", {})
+            desc_1 = current_data.get("promo_zonas_desc_1", 10)
+            set_user_state(wa_id, WAITING_FOR_PROMO_ZONAS_DISCOUNT_2, current_data)
+            msg = (f"🎯 ¿De cuánto es el porcentaje de descuento para *3 o más zonas*?\n\n"
+                   f"Debe ser mayor al {desc_1}% (Por ejemplo: {desc_1 + 10} para {desc_1 + 10}% OFF):")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+        else:
+            buttons = [
+                {"id": "btn_zonas_t2_si", "title": "➕ Sí, agregar tramo"},
+                {"id": "btn_zonas_t2_no", "title": "🚀 Solo 2 zonas"}
+            ]
+            send_whatsapp_buttons(wa_id, "Por favor seleccioná si deseás agregar un segundo tramo para 3 o más zonas:", buttons)
+
+    elif estado_actual == WAITING_FOR_PROMO_ZONAS_DISCOUNT_2:
+        clean_num = re.sub(r'[^\d]', '', texto)
+        current_data = get_user_state(wa_id).get("temp_data", {})
+        desc_1 = current_data.get("promo_zonas_desc_1", 10)
+        if not clean_num or not (int(clean_num) > desc_1 and int(clean_num) <= 99):
+            send_whatsapp_buttons(wa_id, f"⚠️ Por favor, ingresá un porcentaje mayor al primer tramo ({desc_1}%) y menor o igual a 99 (por ejemplo: {desc_1 + 10} para {desc_1 + 10}% OFF):", btn_volver_menu)
+            return
+        desc_2 = int(clean_num)
+        current_data["promo_zonas_desc_2"] = desc_2
+        set_user_state(wa_id, WAITING_FOR_PROMO_ZONAS_ACUMULABLE, current_data)
+        msg = ("¿Querés que esta promoción por zonas sea *acumulable* con las promociones por fecha (reserva anticipada/jornadas)?\n\n"
+               "• *Acumulables:* Se suman ambos descuentos.\n"
+               "• *No acumulables:* Se aplica el mayor descuento al cliente.")
+        buttons = [
+            {"id": "btn_acum_si", "title": "➕ Sí, acumulables"},
+            {"id": "btn_acum_no", "title": "🚫 No acumulables"}
+        ]
+        send_whatsapp_buttons(wa_id, msg, buttons)
+
+    elif estado_actual == WAITING_FOR_PROMO_ZONAS_ACUMULABLE:
+        current_data = get_user_state(wa_id).get("temp_data", {})
+        if texto_limpio in ["btn_acum_si", "si", "sí", "acumulable", "acumulables", "1", "si, acumulables"]:
+            current_data["promo_zonas_acumulable"] = True
+            generar_borrador_promocion_zonas(wa_id, current_data, nombre)
+        elif texto_limpio in ["btn_acum_no", "no", "no acumulable", "no acumulables", "2"]:
+            current_data["promo_zonas_acumulable"] = False
+            generar_borrador_promocion_zonas(wa_id, current_data, nombre)
+        else:
+            buttons = [
+                {"id": "btn_acum_si", "title": "➕ Sí, acumulables"},
+                {"id": "btn_acum_no", "title": "🚫 No acumulables"}
+            ]
+            send_whatsapp_buttons(wa_id, "Por favor seleccioná si deseás que los descuentos sean acumulables con promociones por fecha:", buttons)
+
+    elif estado_actual == CONFIRM_PROMO_ZONAS_DRAFT:
+        if texto_limpio in ["btn_activar_promo_zonas", "activar", "si", "sí", "confirmar", "publicar", "1", "ok", "activar promo"]:
+            user_session = get_user_state(wa_id)
+            temp_data = user_session.get("temp_data", {})
+            promocion_zonas_data = temp_data.get("promocion_zonas_data")
+
+            web_info = obtener_web_del_cliente(wa_id)
+            if web_info and promocion_zonas_data:
+                content = web_info["content"]
+                if "lista_precios" in content and isinstance(content["lista_precios"], dict):
+                    content["lista_precios"]["promocion_zonas"] = promocion_zonas_data
+                    if actualizar_web_content(web_info["version_id"], content):
+                        clear_user_state(wa_id)
+                        slug = web_info.get("slug", "mi-web")
+                        public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
+                        msg = (f"🎉 ¡Promoción por zonas activada y publicada con éxito en tu web!\n\n"
+                               f"Tus clientes ya pueden combinar servicios con descuentos por cantidad.\n\n"
+                               f"🔗 {public_url}\n\n"
+                               f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                        buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                        send_whatsapp_buttons(wa_id, msg, buttons)
+                    else:
+                        send_whatsapp_message(wa_id, "❌ Hubo un error al guardar la promoción en la base de datos.")
+                else:
+                    send_whatsapp_message(wa_id, "⚠️ Tu web no cuenta con una lista de precios base válida.")
+                    clear_user_state(wa_id)
+            else:
+                send_whatsapp_message(wa_id, "⚠️ No se encontró el borrador de la promoción o los datos de tu web. Por favor reintentá.")
+                clear_user_state(wa_id)
+        elif texto_limpio in ["btn_cancelar_promo_zonas", "cancelar", "no", "descartar", "2"]:
+            clear_user_state(wa_id)
+            send_whatsapp_message(wa_id, "❌ Publicación cancelada. El borrador de la promoción por zonas fue descartado y tus precios no sufrieron modificaciones.")
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+        else:
+            buttons = [
+                {"id": "btn_activar_promo_zonas", "title": "✅ Activar Promo"},
+                {"id": "btn_cancelar_promo_zonas", "title": "❌ Cancelar"}
+            ]
+            send_whatsapp_buttons(wa_id, "Por favor respondé *Activar* para confirmar la subida de la promo o *Cancelar* para descartar el borrador.", buttons)
+
+    elif estado_actual == WAITING_FOR_STOP_PROMO_CHOICE:
+        web_info = obtener_web_del_cliente(wa_id)
+        if not web_info or not web_info.get("content"):
+            send_whatsapp_message(wa_id, "⚠️ No encontramos tu página web en el sistema.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return
+        content = web_info["content"]
+        lp = content.get("lista_precios")
+        if not lp or not isinstance(lp, dict):
+            send_whatsapp_message(wa_id, "ℹ️ Tu lista de precios no tiene ninguna promoción activa en este momento.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+            return
+
+        slug = web_info.get("slug", "mi-web")
+        public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
+
+        if texto_limpio in ["frenar_promo_fecha", "fecha", "frenar fecha", "1"]:
+            lp.pop("promocion_fecha", None)
+            if actualizar_web_content(web_info["version_id"], content):
+                clear_user_state(wa_id)
+                msg = (f"⏹️ ¡Listo! La promoción por fecha fue detenida y retirada de tu web.\n\n"
+                       f"La promoción por zonas continúa activa.\n\n"
+                       f"🔗 Refrescá tu web: {public_url}\n\n"
+                       f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                send_whatsapp_buttons(wa_id, msg, buttons)
+            else:
+                send_whatsapp_message(wa_id, "❌ Hubo un error al actualizar tu web en la base de datos.")
+                clear_user_state(wa_id)
+        elif texto_limpio in ["frenar_promo_zonas", "zonas", "frenar zonas", "2"]:
+            lp.pop("promocion_zonas", None)
+            if actualizar_web_content(web_info["version_id"], content):
+                clear_user_state(wa_id)
+                msg = (f"⏹️ ¡Listo! La promoción por zonas fue detenida y retirada de tu web.\n\n"
+                       f"La promoción por fecha continúa activa.\n\n"
+                       f"🔗 Refrescá tu web: {public_url}\n\n"
+                       f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                send_whatsapp_buttons(wa_id, msg, buttons)
+            else:
+                send_whatsapp_message(wa_id, "❌ Hubo un error al actualizar tu web en la base de datos.")
+                clear_user_state(wa_id)
+        elif texto_limpio in ["frenar_promo_ambas", "ambas", "frenar ambas", "todas", "3"]:
+            lp.pop("promocion_fecha", None)
+            lp.pop("promocion_zonas", None)
+            if actualizar_web_content(web_info["version_id"], content):
+                clear_user_state(wa_id)
+                msg = (f"⏹️ ¡Listo! Ambas promociones fueron detenidas y retiradas de tu web.\n\n"
+                       f"Tus precios volvieron a mostrarse en su valor regular sin descuentos ni banners.\n\n"
+                       f"🔗 Refrescá tu web: {public_url}\n\n"
+                       f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                buttons = [{"id": "btn_menu", "title": "📱 Menú Principal"}]
+                send_whatsapp_buttons(wa_id, msg, buttons)
+            else:
+                send_whatsapp_message(wa_id, "❌ Hubo un error al actualizar tu web en la base de datos.")
+                clear_user_state(wa_id)
+        else:
+            buttons = [
+                {"id": "frenar_promo_fecha", "title": "📅 Frenar Fecha"},
+                {"id": "frenar_promo_zonas", "title": "🎯 Frenar Zonas"},
+                {"id": "frenar_promo_ambas", "title": "🛑 Frenar Ambas"}
+            ]
+            send_whatsapp_buttons(wa_id, "Por favor seleccioná qué promoción deseás detener:", buttons)
 
     else:
         # Fallback si estamos en IDLE

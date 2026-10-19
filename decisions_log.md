@@ -262,3 +262,24 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   5. Se actualizaron los mocks de las suites auxiliares `test_day27_flow.py` y `test_paused_flow.py` para capturar tanto mensajes directos como botones interactivos (100% PASS en las 4 suites del sistema).
 - **Razón:** Reducir la fricción en celulares a un solo toque físico, permitiendo a los comerciantes cancelar o volver sin la carga cognitiva ni motriz de abrir el teclado para escribir "cancelar".
 - **Impacto:** Ergonomía móvil superior y consistencia absoluta en todo el árbol conversacional de TuWebLista.
+
+## [18/10/2026] — Implementación de Promociones por Cantidad de Zonas (Combos) y Regla de Acumulación
+- **Decisión:**
+  1. En `bot_engine.py`, se implementó la FSM interactiva para la creación y gestión de **Promociones por Cantidad de Zonas (Combos)**:
+     - Opción `PROMO_ZONAS_START` ("🎯 Promo por Zonas") en el submenú de precios (`mostrar_menu_precios`), manteniendo la lista WhatsApp $\le 6$ filas.
+     - `WAITING_FOR_PROMO_ZONAS_DISCOUNT_1`: Ingreso y validación de porcentaje entero $[1, 99]$ para 2 zonas con botón de escape `btn_menu`.
+     - `WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE`: Selección interactiva de segundo tramo para 3+ zonas con botones $\le 20$ chars (`btn_zonas_t2_si`, `btn_zonas_t2_no`).
+     - `WAITING_FOR_PROMO_ZONAS_DISCOUNT_2`: Validación de porcentaje estrictamente mayor al tramo 1 y $\le 99$.
+     - `WAITING_FOR_PROMO_ZONAS_ACUMULABLE`: Pregunta con botones interactivos (`btn_acum_si`, `btn_acum_no`) si la promo por zonas es acumulable con la promo por fecha (reserva anticipada/jornadas).
+     - Generación de borrador con token seguro de 8 chars en `price_drafts` (SQLite WAL) y vista previa (`/precios?preview=TOKEN`).
+     - En `CONFIRM_PROMO_ZONAS_DRAFT`: confirmación persistiendo en Supabase `website_content.content["lista_precios"]["promocion_zonas"]` e incrementando versión; o descarte limpio.
+     - Detención selectiva (`detener_promocion_activa` / `WAITING_FOR_STOP_PROMO_CHOICE`): si ambas promos están activas, ofrece 3 botones (`[ 📅 Frenar Fecha ]`, `[ 🎯 Frenar Zonas ]`, `[ 🛑 Frenar Ambas ]`); si solo una está activa, la detiene directamente.
+  2. En `templates/client_template.html`, se implementó la visualización y reactividad en el frontend:
+     - Contenedor `#promo-zonas-container` con píldoras interactivas (`.promo-zone-pill`) que destacan las escalas de cantidad y badge explicativo de acumulación.
+     - En el Carrito Flotante (`#price-multi-bar` z-[150]): recálculo dinámico en tiempo real según la cantidad de zonas tildadas (`selectedServices.size`), aplicando la regla de combinación (acumulable: suma de porcentajes; no acumulable: mayor beneficio), recalculando sobre los precios base y actualizando el badge y total en vivo.
+     - Generador de mensaje de WhatsApp: desglose detallado de tratamientos, bonificaciones aplicadas y total final.
+  3. En `scripts/utils/test_price_list_backend.py`, se implementó el **TEST 12** cubriendo todo el ciclo FSM del bot (100% PASS).
+  4. En `scripts/utils/test_price_list_frontend.py`, se implementó el **TEST 8** cubriendo el renderizado del banner, badges, cálculo JS y mensaje de WhatsApp (100% PASS).
+  5. Cero regresiones en `test_day27_flow.py` y `test_paused_flow.py`.
+- **Razón:** Permitir a los negocios de estética, depilación, belleza y servicios armar promociones por combos de zonas/servicios directamente desde WhatsApp, aumentando el ticket promedio de compra con una experiencia táctil intuitiva y transparente tanto para el comerciante como para el cliente final.
+- **Impacto:** Motor comercial completo en la lista de precios con soporte para promociones de calendario (fecha), promociones por volumen (zonas) y reglas matemáticas de combinación sin fricciones.

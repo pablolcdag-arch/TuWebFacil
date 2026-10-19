@@ -888,6 +888,300 @@ Corte y barba: $20.000"""
 
     print("  ✅ Leyendas de cancelación y reseteo sin modificación de BD verificadas al 100%.")
 
+    # ---------------------------------------------------------
+    # TEST 12: Promociones por Cantidad de Zonas (Combos) y Regla de Acumulación
+    # ---------------------------------------------------------
+    print("\n[TEST 12] Verificando FSM interactiva para Promoción por Zonas (Combos) y Acumulación...")
+    
+    mock_web_zonas = {
+        "website_id": "w_zonas",
+        "version_id": "v_zonas_1",
+        "content": {
+            "titulo_web": "Soteria Estética",
+            "lista_precios": {
+                "titulo": "Lista Soteria",
+                "columnas_pago": ["Efectivo", "Transferencia", "Tarjeta"],
+                "items": [
+                    {"servicio": "Pierna Entera", "precios": {"efectivo": "$20.000", "transferencia": "$22.000", "tarjeta": "$24.000"}},
+                    {"servicio": "Cavado Completo", "precios": {"efectivo": "$15.000", "transferencia": "$16.500", "tarjeta": "$18.000"}}
+                ]
+            }
+        },
+        "slug": "soteria-estetica",
+        "custom_domain": None
+    }
+
+    # 12A. Apertura desde submenú WAITING_FOR_PRICE_MENU_OPTION
+    bot_engine.clear_user_state(test_wa)
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_MENU_OPTION)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_zonas):
+        bot_engine.procesar_mensaje(test_wa, "promo_zonas_start", "Tester")
+        assert mock_send_btns.called
+        msg_txt = mock_send_btns.call_args[0][1]
+        assert "Promoción por Cantidad de Zonas" in msg_txt
+        assert "2 zonas o servicios" in msg_txt
+        btns_sent = mock_send_btns.call_args[0][2]
+        assert any(b["id"] == "btn_menu" for b in btns_sent)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_DISCOUNT_1
+
+    # 12B. Validación estricta de descuento del tramo 1
+    # Entrada inválida (no numérica)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "veinte por ciento", "Tester")
+        assert mock_send_btns.called
+        assert "Por favor, ingresá un porcentaje válido" in mock_send_btns.call_args[0][1]
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_DISCOUNT_1
+
+    # Entrada inválida (> 99)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "120%", "Tester")
+        assert mock_send_btns.called
+        assert "Por favor, ingresá un porcentaje válido" in mock_send_btns.call_args[0][1]
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_DISCOUNT_1
+
+    # Entrada válida: 15%
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "15%", "Tester")
+        assert mock_send_btns.called
+        prompt_t2 = mock_send_btns.call_args[0][1]
+        assert "2do tramo con mayor descuento" in prompt_t2
+        btns_t2 = mock_send_btns.call_args[0][2]
+        for b in btns_t2:
+            assert len(b["title"]) <= 20, f"Botón '{b['title']}' excede 20 caracteres de WhatsApp"
+        assert any(b["id"] == "btn_zonas_t2_si" for b in btns_t2)
+        assert any(b["id"] == "btn_zonas_t2_no" for b in btns_t2)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE
+        assert bot_engine.get_user_state(test_wa)["temp_data"]["promo_zonas_desc_1"] == 15
+
+    # 12C. Selección de tramo 2 (Sí) y validación de descuento tramo 2
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "btn_zonas_t2_si", "Tester")
+        assert mock_send_btns.called
+        prompt_d2 = mock_send_btns.call_args[0][1]
+        assert "3 o más zonas" in prompt_d2
+        assert "mayor al 15%" in prompt_d2
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_DISCOUNT_2
+
+    # Descuento menor o igual al tramo 1 (ej: 10% o 15%)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "10", "Tester")
+        assert mock_send_btns.called
+        assert "mayor al primer tramo" in mock_send_btns.call_args[0][1]
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_DISCOUNT_2
+
+    # Descuento tramo 2 válido: 25%
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "25", "Tester")
+        assert mock_send_btns.called
+        prompt_acum = mock_send_btns.call_args[0][1]
+        assert "acumulable" in prompt_acum.lower()
+        btns_acum = mock_send_btns.call_args[0][2]
+        for b in btns_acum:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "btn_acum_si" for b in btns_acum)
+        assert any(b["id"] == "btn_acum_no" for b in btns_acum)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_ACUMULABLE
+        assert bot_engine.get_user_state(test_wa)["temp_data"]["promo_zonas_desc_2"] == 25
+
+    # 12D. Elección de acumulable (Sí), generación de borrador con 2 tramos y verificación
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_zonas):
+        bot_engine.procesar_mensaje(test_wa, "btn_acum_si", "Tester")
+        assert mock_send_btns.called
+        preview_msg = mock_send_btns.call_args[0][1]
+        assert "Borrador de Promo por Zonas" in preview_msg
+        assert "2 zonas ➔ 15% OFF" in preview_msg
+        assert "3 o más zonas ➔ 25% OFF" in preview_msg
+        assert "Sí (se suma con promo por fecha)" in preview_msg
+        btns_confirm = mock_send_btns.call_args[0][2]
+        for b in btns_confirm:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "btn_activar_promo_zonas" for b in btns_confirm)
+        assert any(b["id"] == "btn_cancelar_promo_zonas" for b in btns_confirm)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.CONFIRM_PROMO_ZONAS_DRAFT
+        
+        # Verificar token seguro de 8 caracteres y persistencia en price_drafts SQLite
+        draft_token = bot_engine.get_user_state(test_wa)["temp_data"]["draft_token"]
+        assert len(draft_token) == 8
+        conn = sqlite3.connect(bot_engine.get_db_path())
+        c = conn.cursor()
+        c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (draft_token,))
+        row = c.fetchone()
+        conn.close()
+        assert row is not None
+        saved_draft = json.loads(row[0])
+        assert "promocion_zonas" in saved_draft
+        pz = saved_draft["promocion_zonas"]
+        assert pz["activa"] is True
+        assert pz["acumulable"] is True
+        assert len(pz["escalas"]) == 2
+        assert pz["escalas"][0]["cantidad"] == 2 and pz["escalas"][0]["descuento"] == 15
+        assert pz["escalas"][1]["cantidad"] == 3 and pz["escalas"][1]["descuento"] == 25
+
+    # 12E. Cancelar el borrador descarta cambios sin tocar website_content
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+         patch("bot_engine.actualizar_web_content") as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_zonas):
+        bot_engine.procesar_mensaje(test_wa, "btn_cancelar_promo_zonas", "Tester")
+        mock_update.assert_not_called()
+        cancel_msg = mock_send_msg.call_args_list[0][0][1]
+        assert "Publicación cancelada" in cancel_msg
+        mock_send_list.assert_called_once()
+        assert mock_send_list.call_args[0][4] == "Panel de Control"
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    # 12F. Creación con 1 solo tramo, No Acumulable y Confirmación en Supabase
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PROMO_ZONAS_DISCOUNT_1)
+    with patch("bot_engine.send_whatsapp_buttons"):
+        bot_engine.procesar_mensaje(test_wa, "10", "Tester")
+    
+    assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE
+    with patch("bot_engine.send_whatsapp_buttons"):
+        bot_engine.procesar_mensaje(test_wa, "btn_zonas_t2_no", "Tester")
+    
+    assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROMO_ZONAS_ACUMULABLE
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_zonas):
+        bot_engine.procesar_mensaje(test_wa, "btn_acum_no", "Tester")
+        assert mock_send_btns.called
+        preview_1t = mock_send_btns.call_args[0][1]
+        assert "Tramo 2" not in preview_1t
+        assert "No (aplica el descuento mayor)" in preview_1t
+
+    # Confirmar activación en Supabase
+    import copy
+    web_para_activar = copy.deepcopy(mock_web_zonas)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_para_activar):
+        bot_engine.procesar_mensaje(test_wa, "btn_activar_promo_zonas", "Tester")
+        mock_update.assert_called_once()
+        v_id, c_data = mock_update.call_args[0]
+        assert "promocion_zonas" in c_data["lista_precios"]
+        saved_pz = c_data["lista_precios"]["promocion_zonas"]
+        assert saved_pz["activa"] is True
+        assert saved_pz["acumulable"] is False
+        assert len(saved_pz["escalas"]) == 1
+        assert saved_pz["escalas"][0]["cantidad"] == 2 and saved_pz["escalas"][0]["descuento"] == 10
+        assert mock_send_btns.called
+        success_msg = mock_send_btns.call_args[0][1]
+        assert "Promoción por zonas activada y publicada con éxito" in success_msg
+        btns_ret = mock_send_btns.call_args[0][2]
+        assert any(b["id"] == "btn_menu" for b in btns_ret)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.IDLE
+
+    # 12G. Detención de promociones
+    # 12G.1 Solo promoción por zonas activa
+    web_solo_zonas = copy.deepcopy(mock_web_zonas)
+    web_solo_zonas["content"]["lista_precios"]["promocion_zonas"] = saved_pz
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_MENU_OPTION)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_solo_zonas):
+        bot_engine.procesar_mensaje(test_wa, "promo_detener", "Tester")
+        mock_update.assert_called_once()
+        v_id, c_data = mock_update.call_args[0]
+        assert "promocion_zonas" not in c_data["lista_precios"]
+        assert mock_send_btns.called
+        assert "promoción por zonas fue detenida" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
+
+    # 12G.2 Ambas promociones activas (fecha y zonas) -> menú interactivo de detención
+    web_ambas_promos = copy.deepcopy(mock_web_zonas)
+    web_ambas_promos["content"]["lista_precios"]["promocion_fecha"] = {
+        "titulo": "Jornada Noviembre",
+        "activa": True,
+        "escalas": [{"hasta": "2026-11-17", "descuento": 30, "label": "30% OFF"}]
+    }
+    web_ambas_promos["content"]["lista_precios"]["promocion_zonas"] = saved_pz
+
+    # Disparar detención cuando ambas están activas
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_ambas_promos):
+        bot_engine.procesar_mensaje(test_wa, "detener promo", "Tester")
+        assert mock_send_btns.called
+        prompt_stop = mock_send_btns.call_args[0][1]
+        assert "Tenés activas tanto la *Promo por Fecha* como la *Promo por Zonas*" in prompt_stop
+        btns_stop = mock_send_btns.call_args[0][2]
+        for b in btns_stop:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "frenar_promo_fecha" for b in btns_stop)
+        assert any(b["id"] == "frenar_promo_zonas" for b in btns_stop)
+        assert any(b["id"] == "frenar_promo_ambas" for b in btns_stop)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_STOP_PROMO_CHOICE
+
+    # 12G.3 Elegir frenar solo fecha en WAITING_FOR_STOP_PROMO_CHOICE
+    web_stop_fecha = copy.deepcopy(web_ambas_promos)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_stop_fecha):
+        bot_engine.procesar_mensaje(test_wa, "frenar_promo_fecha", "Tester")
+        mock_update.assert_called_once()
+        v_id, c_data = mock_update.call_args[0]
+        assert "promocion_fecha" not in c_data["lista_precios"]
+        assert "promocion_zonas" in c_data["lista_precios"]
+        assert "promoción por fecha fue detenida" in mock_send_btns.call_args[0][1]
+        assert "promoción por zonas continúa activa" in mock_send_btns.call_args[0][1]
+
+    # 12G.4 Elegir frenar solo zonas en WAITING_FOR_STOP_PROMO_CHOICE
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_STOP_PROMO_CHOICE)
+    web_stop_zonas = copy.deepcopy(web_ambas_promos)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_stop_zonas):
+        bot_engine.procesar_mensaje(test_wa, "frenar_promo_zonas", "Tester")
+        mock_update.assert_called_once()
+        v_id, c_data = mock_update.call_args[0]
+        assert "promocion_zonas" not in c_data["lista_precios"]
+        assert "promocion_fecha" in c_data["lista_precios"]
+        assert "promoción por zonas fue detenida" in mock_send_btns.call_args[0][1]
+        assert "promoción por fecha continúa activa" in mock_send_btns.call_args[0][1]
+
+    # 12G.5 Elegir frenar ambas en WAITING_FOR_STOP_PROMO_CHOICE
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_STOP_PROMO_CHOICE)
+    web_stop_ambas = copy.deepcopy(web_ambas_promos)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_stop_ambas):
+        bot_engine.procesar_mensaje(test_wa, "frenar_promo_ambas", "Tester")
+        mock_update.assert_called_once()
+        v_id, c_data = mock_update.call_args[0]
+        assert "promocion_fecha" not in c_data["lista_precios"]
+        assert "promocion_zonas" not in c_data["lista_precios"]
+        assert "Ambas promociones fueron detenidas" in mock_send_btns.call_args[0][1]
+
+    # 12H. Cancelación y escapes universales en todos los nuevos estados
+    nuevos_estados = [
+        bot_engine.WAITING_FOR_PROMO_ZONAS_DISCOUNT_1,
+        bot_engine.WAITING_FOR_PROMO_ZONAS_TIER2_CHOICE,
+        bot_engine.WAITING_FOR_PROMO_ZONAS_DISCOUNT_2,
+        bot_engine.WAITING_FOR_PROMO_ZONAS_ACUMULABLE,
+        bot_engine.CONFIRM_PROMO_ZONAS_DRAFT,
+        bot_engine.WAITING_FOR_STOP_PROMO_CHOICE,
+    ]
+    for st in nuevos_estados:
+        bot_engine.set_user_state(test_wa, st, {"dummy": 123})
+        with patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+             patch("bot_engine.actualizar_web_content") as mock_update:
+            bot_engine.procesar_mensaje(test_wa, "cancelar", "Tester")
+            mock_update.assert_not_called()
+            mock_send_list.assert_called_once()
+            assert mock_send_list.call_args[0][4] == "Panel de Control"
+            assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+        bot_engine.set_user_state(test_wa, st, {"dummy": 123})
+        with patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+             patch("bot_engine.actualizar_web_content") as mock_update:
+            bot_engine.procesar_mensaje(test_wa, "btn_menu", "Tester")
+            mock_update.assert_not_called()
+            mock_send_list.assert_called_once()
+            assert mock_send_list.call_args[0][4] == "Panel de Control"
+            assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    print("  ✅ Promociones por Zonas (Combos), Acumulación, Detención Selectiva y Reseteos 100% verificados.")
+
     # Limpiar estado final
     bot_engine.clear_user_state(test_wa)
 

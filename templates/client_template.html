@@ -140,8 +140,9 @@
         <!-- Banner de Jornada / Promoción por Fecha (si aplica) -->
         {% if web_content.lista_precios.promocion_fecha and web_content.lista_precios.promocion_fecha.activa %}
         {% set promo = web_content.lista_precios.promocion_fecha %}
+        {% set banner_margin = 'mb-6' if (web_content.lista_precios.promocion_zonas and web_content.lista_precios.promocion_zonas.activa) else 'mb-10' %}
         <div id="promo-banner-container"
-             class="max-w-2xl mx-auto mb-10 p-5 md:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl shadow-xl border border-indigo-500/30 relative overflow-hidden transition-all"
+             class="max-w-2xl mx-auto {{ banner_margin }} p-5 md:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl shadow-xl border border-indigo-500/30 relative overflow-hidden transition-all"
              data-promo='{{ promo | tojson }}'>
             <div class="flex items-start gap-4">
                 <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0 text-xl shadow-inner text-amber-300">
@@ -168,6 +169,62 @@
                             <div class="flex items-center gap-2">
                                 <span class="w-2 h-2 rounded-full bg-slate-400 indicator-dot"></span>
                                 <span class="font-medium text-slate-300">Hasta el {{ esc.hasta_display }}</span>
+                            </div>
+                            <span class="font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded-md">
+                                {{ esc.descuento }}% OFF
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Banner de Promoción por Zonas / Combos (si aplica) -->
+        {% if web_content.lista_precios.promocion_zonas and web_content.lista_precios.promocion_zonas.activa %}
+        {% set promo_zonas = web_content.lista_precios.promocion_zonas %}
+        <div id="promo-zonas-container"
+             class="max-w-2xl mx-auto mb-10 p-5 md:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl shadow-xl border border-indigo-500/30 relative overflow-hidden transition-all"
+             data-promo-zonas='{{ promo_zonas | tojson }}'>
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0 text-xl shadow-inner text-amber-300">
+                    🎯
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                        <span class="text-xs uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/20">
+                            Combo de Zonas
+                        </span>
+                        {% if promo_zonas.acumulable %}
+                        <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                            ✨ ¡Acumulable con la Promo por Fecha!
+                        </span>
+                        {% else %}
+                        <span class="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                            ℹ️ No acumulable con otras promociones (aplica el mayor descuento)
+                        </span>
+                        {% endif %}
+                    </div>
+                    <h3 class="text-lg md:text-xl font-black tracking-tight text-white mb-2">
+                        {{ promo_zonas.titulo or 'Promo Combos de Zonas' }}
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/10 text-xs" id="promo-zonas-scales-list">
+                        {% for esc in promo_zonas.escalas %}
+                        <div class="promo-zone-pill flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10 transition-colors"
+                             data-cantidad="{{ esc.cantidad }}"
+                             data-descuento="{{ esc.descuento }}">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-indigo-400 zone-indicator-dot"></span>
+                                <span class="font-medium text-slate-300">
+                                    {% if esc.label %}
+                                        {{ esc.label }}
+                                    {% elif esc.cantidad == 2 %}
+                                        2 zonas: {{ esc.descuento }}% OFF
+                                    {% else %}
+                                        {{ esc.cantidad }} o más zonas: {{ esc.descuento }}% OFF
+                                    {% endif %}
+                                </span>
                             </div>
                             <span class="font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded-md">
                                 {{ esc.descuento }}% OFF
@@ -455,6 +512,7 @@
             const cleanPhone = {{ ((web_content.whatsapp_contacto if (web_content and web_content.whatsapp_contacto) else (client.phone if (client and client.phone) else '')) | string | replace('+', '') | replace(' ', '') | replace('-', '')) | tojson }};
             const columnasPago = {{ columnas | tojson }};
             const promoData = {{ (web_content.lista_precios.promocion_fecha if (web_content.lista_precios and web_content.lista_precios.promocion_fecha and web_content.lista_precios.promocion_fecha.activa) else None) | tojson }};
+            const promoZonasData = {{ (web_content.lista_precios.promocion_zonas if (web_content.lista_precios and web_content.lista_precios.promocion_zonas and web_content.lista_precios.promocion_zonas.activa) else None) | tojson }};
 
             // --- EVALUACIÓN DINÁMICA DE PROMOCIÓN POR FECHA ---
             let activeDiscount = 0;
@@ -745,40 +803,109 @@
 
                 if (count === 0) {
                     if (multiBar) multiBar.classList.add('hidden');
+                    document.querySelectorAll('.promo-zone-pill').forEach(pill => {
+                        pill.classList.remove('bg-emerald-500/15', 'border-emerald-500/40', 'ring-1', 'ring-emerald-400/30');
+                    });
                     return;
                 }
 
                 if (multiBar) multiBar.classList.remove('hidden');
 
-                // Calcular totales por cada columna de pago
-                const totalsByCol = {};
+                // 1. Calcular zoneDiscount por cantidad de zonas seleccionadas
+                let zoneDiscount = 0;
+                let matchingZoneScale = null;
+                if (promoZonasData && promoZonasData.activa && Array.isArray(promoZonasData.escalas) && promoZonasData.escalas.length > 0) {
+                    const sortedEscalas = [...promoZonasData.escalas].sort((a, b) => (b.cantidad || 0) - (a.cantidad || 0));
+                    for (const esc of sortedEscalas) {
+                        if (count >= esc.cantidad) {
+                            zoneDiscount = parseInt(esc.descuento, 10) || 0;
+                            matchingZoneScale = esc;
+                            break;
+                        }
+                    }
+                }
+
+                // Resaltar visualmente la píldora de escala de combo alcanzada
+                document.querySelectorAll('.promo-zone-pill').forEach(pill => {
+                    const cant = parseInt(pill.getAttribute('data-cantidad'), 10) || 0;
+                    if (matchingZoneScale && matchingZoneScale.cantidad === cant) {
+                        pill.classList.add('bg-emerald-500/15', 'border-emerald-500/40', 'ring-1', 'ring-emerald-400/30');
+                    } else {
+                        pill.classList.remove('bg-emerald-500/15', 'border-emerald-500/40', 'ring-1', 'ring-emerald-400/30');
+                    }
+                });
+
+                // 2. Regla de Combinación con activeDiscount (Descuento de Fecha vigente)
+                let effectiveDiscount = 0;
+                let discountExplanation = '';
+
+                if (activeDiscount > 0 && zoneDiscount > 0) {
+                    // Caso 1: Ambas promociones con descuento
+                    if (promoZonasData && promoZonasData.acumulable === true) {
+                        effectiveDiscount = activeDiscount + zoneDiscount;
+                        discountExplanation = `(${activeDiscount}% Fecha + ${zoneDiscount}% Zonas = ${effectiveDiscount}% OFF)`;
+                    } else {
+                        effectiveDiscount = Math.max(activeDiscount, zoneDiscount);
+                        discountExplanation = `(${effectiveDiscount}% OFF aplicado - Mayor beneficio)`;
+                    }
+                } else if (zoneDiscount > 0 && activeDiscount === 0) {
+                    // Caso 2: Solo promo por zonas
+                    effectiveDiscount = zoneDiscount;
+                    discountExplanation = `(${zoneDiscount}% OFF por ${count} zonas)`;
+                } else if (activeDiscount > 0 && zoneDiscount === 0) {
+                    // Caso 3: Solo promo por fecha
+                    effectiveDiscount = activeDiscount;
+                    discountExplanation = `(${activeDiscount}% OFF aplicado)`;
+                } else {
+                    // Caso 4: Sin promociones vigentes
+                    effectiveDiscount = 0;
+                    discountExplanation = '';
+                }
+
+                // 3. Calcular totales brutos sumando los precios de los servicios seleccionados y aplicando effectiveDiscount
+                const grossTotalsByCol = {};
                 if (columnasPago && columnasPago.length > 0) {
-                    columnasPago.forEach(c => totalsByCol[c] = 0);
+                    columnasPago.forEach(c => grossTotalsByCol[c] = 0);
                 }
 
                 selectedServices.forEach(item => {
-                    const p = item.prices || {};
+                    const p = item.regularPrices || item.prices || {};
                     if (columnasPago && columnasPago.length > 0) {
                         columnasPago.forEach(col => {
-                            const valStr = getPriceForCol(p, col);
-                            totalsByCol[col] += parsePriceValue(valStr);
+                            let valStr = getPriceForCol(p, col);
+                            if (!valStr || valStr === '-') {
+                                valStr = getPriceForCol(item.prices, col);
+                            }
+                            grossTotalsByCol[col] += parsePriceValue(valStr);
                         });
                     }
                 });
 
+                const finalTotalsByCol = {};
+                if (columnasPago && columnasPago.length > 0) {
+                    columnasPago.forEach(col => {
+                        const bruto = grossTotalsByCol[col] || 0;
+                        if (effectiveDiscount > 0) {
+                            finalTotalsByCol[col] = Math.round(bruto * (1 - (effectiveDiscount / 100)));
+                        } else {
+                            finalTotalsByCol[col] = bruto;
+                        }
+                    });
+                }
+
                 // Modalidad principal a destacar en la barra
-                const primaryCol = (currentMobileCol && totalsByCol.hasOwnProperty(currentMobileCol))
+                const primaryCol = (currentMobileCol && finalTotalsByCol.hasOwnProperty(currentMobileCol))
                     ? currentMobileCol
                     : (columnasPago && columnasPago.length > 0 ? columnasPago[0] : '');
 
-                const primaryTotalNum = totalsByCol[primaryCol] || 0;
-                const formattedPrimary = formatARS(primaryTotalNum);
+                const primaryFinalTotalNum = finalTotalsByCol[primaryCol] || 0;
+                const formattedPrimary = formatARS(primaryFinalTotalNum);
 
                 if (multiPrimaryTotalEl) {
                     multiPrimaryTotalEl.textContent = formattedPrimary;
                 }
 
-                const promoNote = (activeDiscount > 0) ? ` <span class="text-xs text-amber-300 font-bold ml-1.5">(${activeDiscount}% OFF aplicado)</span>` : '';
+                const promoNote = discountExplanation ? ` <span class="text-xs text-amber-300 font-bold ml-1.5">${discountExplanation}</span>` : '';
                 if (multiTotalsSummaryEl) {
                     if (columnasPago && columnasPago.length > 1) {
                         multiTotalsSummaryEl.innerHTML = `Total est. ${primaryCol}: <span class="text-green-400" id="multi-primary-total">${formattedPrimary}</span>${promoNote}`;
@@ -787,7 +914,24 @@
                     }
                 }
 
-                // Generar mensaje compuesto para WhatsApp
+                // 4. Generación del mensaje preformateado de WhatsApp
+                let promoMsgLine = '';
+                if (effectiveDiscount > 0) {
+                    if (activeDiscount > 0 && zoneDiscount > 0) {
+                        if (promoZonasData && promoZonasData.acumulable === true) {
+                            promoMsgLine = `\n🔥 Promociones aplicadas: ${activeDiscount}% OFF Reserva Anticipada + ${zoneDiscount}% OFF por ${count} zonas (Total: ${effectiveDiscount}% OFF)\n`;
+                        } else {
+                            const mayorLabel = activeDiscount >= zoneDiscount ? 'Reserva Anticipada' : `${count} zonas`;
+                            promoMsgLine = `\n🔥 Promo aplicada: ${effectiveDiscount}% OFF (${mayorLabel} - Mayor beneficio)\n`;
+                        }
+                    } else if (zoneDiscount > 0 && activeDiscount === 0) {
+                        promoMsgLine = `\n🎯 Promo aplicada: ${zoneDiscount}% OFF por elegir ${count} zonas\n`;
+                    } else if (activeDiscount > 0 && zoneDiscount === 0) {
+                        const pTit = (promoData && promoData.titulo) ? ` (${promoData.titulo})` : '';
+                        promoMsgLine = `\n🔥 Promo aplicada: ${activeDiscount}% OFF por reserva anticipada${pTit}\n`;
+                    }
+                }
+
                 let msg = '';
                 if (columnasPago && columnasPago.length > 1) {
                     msg += `Hola ${businessTitle}! Quiero consultar disponibilidad y presupuesto para reservar un turno con estos tratamientos:\n`;
@@ -803,14 +947,14 @@
                         msg += `• ${item.service}${colStr}\n`;
                     });
 
-                    if (activeDiscount > 0 && promoData && promoData.titulo) {
-                        msg += `\n🔥 Promo aplicada: ${activeDiscount}% OFF por reserva anticipada (${promoData.titulo})\n`;
+                    if (promoMsgLine) {
+                        msg += promoMsgLine;
                     }
 
-                    msg += `\nTotal estimado ${primaryCol}: ${formatARS(totalsByCol[primaryCol])}\n`;
+                    msg += `\nTotal estimado ${primaryCol}: ${formatARS(finalTotalsByCol[primaryCol])}\n`;
                     columnasPago.forEach(col => {
                         if (col !== primaryCol) {
-                            msg += `(Total ${col}: ${formatARS(totalsByCol[col])})\n`;
+                            msg += `(Total ${col}: ${formatARS(finalTotalsByCol[col])})\n`;
                         }
                     });
                     msg += `\n¿Qué turnos tienen disponibles?`;
@@ -822,9 +966,11 @@
                         const pStr = pVal && pVal !== '-' ? ` (${pVal})` : '';
                         msg += `• ${item.service}${pStr}\n`;
                     });
-                    if (activeDiscount > 0 && promoData && promoData.titulo) {
-                        msg += `\n🔥 Promo aplicada: ${activeDiscount}% OFF por reserva anticipada (${promoData.titulo})\n`;
+
+                    if (promoMsgLine) {
+                        msg += promoMsgLine;
                     }
+
                     msg += `\nTotal estimado: ${formattedPrimary}\n¿Qué turnos tienen disponibles?`;
                 }
 
@@ -833,9 +979,13 @@
                 }
             }
 
-            function setServiceSelected(serviceName, prices, isSelected) {
+            function setServiceSelected(serviceName, prices, isSelected, regularPrices) {
                 if (isSelected) {
-                    selectedServices.set(serviceName, { service: serviceName, prices: prices });
+                    selectedServices.set(serviceName, {
+                        service: serviceName,
+                        prices: prices,
+                        regularPrices: regularPrices || prices
+                    });
                 } else {
                     selectedServices.delete(serviceName);
                 }
@@ -869,10 +1019,12 @@
                 cb.addEventListener('change', function() {
                     const sName = this.getAttribute('data-service') || '';
                     let pData = {};
+                    let regPData = {};
                     try {
                         pData = JSON.parse(this.getAttribute('data-prices') || '{}');
+                        regPData = JSON.parse(this.getAttribute('data-regular-prices') || '{}');
                     } catch(err) {}
-                    setServiceSelected(sName, pData, this.checked);
+                    setServiceSelected(sName, pData, this.checked, regPData);
                 });
             });
 
@@ -881,10 +1033,12 @@
                 cb.addEventListener('change', function() {
                     const sName = this.getAttribute('data-service') || '';
                     let pData = {};
+                    let regPData = {};
                     try {
                         pData = JSON.parse(this.getAttribute('data-prices') || '{}');
+                        regPData = JSON.parse(this.getAttribute('data-regular-prices') || '{}');
                     } catch(err) {}
-                    setServiceSelected(sName, pData, this.checked);
+                    setServiceSelected(sName, pData, this.checked, regPData);
                 });
             });
 
@@ -940,13 +1094,15 @@
                     e.stopPropagation();
                     const serviceName = this.getAttribute('data-service') || '';
                     let prices = {};
+                    let regPrices = {};
                     try {
                         prices = JSON.parse(this.getAttribute('data-prices') || '{}');
+                        regPrices = JSON.parse(this.getAttribute('data-regular-prices') || '{}');
                     } catch(err) {}
 
                     // Si esta fila no estaba seleccionada, agregarla al carrito
                     if (!selectedServices.has(serviceName)) {
-                        setServiceSelected(serviceName, prices, true);
+                        setServiceSelected(serviceName, prices, true, regPrices);
                     }
 
                     // Abrir directamente la URL de WhatsApp con el presupuesto consolidado completo
