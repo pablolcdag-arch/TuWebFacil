@@ -281,7 +281,9 @@ def run_tests():
     assert 'id="multi-totals-summary"' in html_full, "Debe existir el contenedor del total con id='multi-totals-summary'"
     assert 'id="multi-primary-total"' in html_full, "Debe existir el total destacado con id='multi-primary-total'"
     assert 'id="multi-clear-btn"' in html_full, "Debe existir el botón de deseleccionar con id='multi-clear-btn'"
+    assert 'id="multi-clear-btn-mobile"' in html_full, "Debe existir el botón de deseleccionar móvil con id='multi-clear-btn-mobile'"
     assert 'id="multi-wa-btn"' in html_full, "Debe existir el botón de WhatsApp con id='multi-wa-btn'"
+    assert 'flex flex-col md:flex-row' in html_full, "La barra flotante debe ser columna en mobile y fila en desktop"
 
     # 6.D Funciones de cálculo y lógica JS en el bundle
     assert 'function parsePriceValue' in html_full, "El script JS debe definir la función parsePriceValue"

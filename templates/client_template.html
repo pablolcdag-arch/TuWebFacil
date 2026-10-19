@@ -381,17 +381,19 @@
                                data-regular-prices='{{ item.precios | tojson }}'
                                aria-label="Seleccionar {{ item.servicio }}">
                         <div class="min-w-0 flex-1">
-                            <h4 class="font-bold text-slate-900 text-sm leading-snug break-words">
-                                {{ item.servicio }}
-                            </h4>
-                            <div class="flex items-baseline gap-2 mt-1">
-                                <span class="price-value font-extrabold text-xl text-primary tracking-tight"
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <h4 class="font-bold text-slate-900 text-sm leading-snug break-words">
+                                    {{ item.servicio }}
+                                </h4>
+                                <span class="price-method-badge text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                                    {{ first_col }}
+                                </span>
+                            </div>
+                            <div class="mt-1">
+                                <span class="price-value font-extrabold text-lg sm:text-xl text-primary tracking-tight"
                                       data-prices='{{ item.precios | tojson }}'
                                       data-regular-prices='{{ item.precios | tojson }}'>
                                     {{ item_first_price }}
-                                </span>
-                                <span class="price-method-badge text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                                    {{ first_col }}
                                 </span>
                             </div>
                         </div>
@@ -413,14 +415,14 @@
                     <a href="https://wa.me/{{ clean_phone }}?text={{ mob_msg | urlencode }}"
                        target="_blank"
                        rel="noopener noreferrer"
-                       class="mobile-wa-btn shrink-0 px-3.5 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl flex items-center gap-1.5 shadow-md shadow-green-500/20 active:scale-95 transition text-xs font-bold"
+                       class="mobile-wa-btn shrink-0 px-3 py-2 sm:px-3.5 sm:py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl flex items-center gap-1.5 shadow-md shadow-green-500/20 active:scale-95 transition text-xs font-bold"
                        title="Pedir Turno"
                        aria-label="Pedir Turno para {{ item.servicio }}"
                        data-service="{{ item.servicio }}"
                        data-prices='{{ item.precios | tojson }}'
                        data-regular-prices='{{ item.precios | tojson }}'>
                         <i class="fab fa-whatsapp text-base"></i>
-                        <span>Pedir Turno</span>
+                        <span class="whitespace-nowrap">Pedir Turno</span>
                     </a>
                 </div>
                 {% endfor %}
@@ -429,23 +431,31 @@
 
         <!-- Barra Flotante Inferior (Carrito de Presupuesto) -->
         <div id="price-multi-bar"
-             class="hidden fixed bottom-6 md:bottom-8 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:min-w-[560px] max-w-xl z-[150] bg-slate-900/95 backdrop-blur-md text-white px-5 py-4 rounded-2xl shadow-2xl border border-white/10 transition-all duration-300 ring-1 ring-white/15">
-            <div class="flex items-center justify-between gap-4">
-                <div class="min-w-0">
-                    <div class="flex items-center gap-2">
-                        <span class="text-base">🛒</span>
-                        <span class="text-xs font-bold text-slate-200 uppercase tracking-wide">
-                            Carrito: <span class="text-white font-black" id="multi-count">0</span> tratamientos
-                        </span>
+             class="hidden fixed bottom-4 md:bottom-8 inset-x-3 sm:inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:min-w-[580px] max-w-xl z-[150] bg-slate-900/95 backdrop-blur-md text-white p-3.5 sm:p-4 md:px-5 md:py-4 rounded-2xl shadow-2xl border border-white/10 transition-all duration-300 ring-1 ring-white/15">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-sm md:text-base">🛒</span>
+                            <span class="text-xs font-bold text-slate-200 uppercase tracking-wide">
+                                Carrito: <span class="text-white font-black" id="multi-count">0</span> tratamientos
+                            </span>
+                        </div>
+                        <button type="button"
+                                id="multi-clear-btn-mobile"
+                                class="md:hidden text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded-lg transition hover:bg-white/5 active:scale-95"
+                                title="Vaciar carrito">
+                            Limpiar
+                        </button>
                     </div>
-                    <div class="text-sm md:text-base font-extrabold text-white mt-0.5 tracking-tight" id="multi-totals-summary">
+                    <div class="text-sm md:text-base font-extrabold text-white mt-1 tracking-tight" id="multi-totals-summary">
                         Total est.: <span class="text-green-400" id="multi-primary-total">$ 0</span>
                     </div>
                 </div>
-                <div class="flex items-center gap-2 shrink-0">
+                <div class="flex items-center gap-2 shrink-0 w-full md:w-auto">
                     <button type="button"
                             id="multi-clear-btn"
-                            class="text-xs text-slate-400 hover:text-white px-2.5 py-2 rounded-lg transition hover:bg-white/5"
+                            class="hidden md:inline-flex text-xs text-slate-400 hover:text-white px-2.5 py-2 rounded-lg transition hover:bg-white/5"
                             title="Vaciar carrito">
                         Limpiar
                     </button>
@@ -453,7 +463,7 @@
                        id="multi-wa-btn"
                        target="_blank"
                        rel="noopener noreferrer"
-                       class="px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-green-500/25 active:scale-95 transition">
+                       class="w-full md:w-auto px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-green-500/25 active:scale-95 transition">
                         <i class="fab fa-whatsapp text-base"></i>
                         <span>Pedir Presupuesto (<span id="multi-btn-count">0</span>)</span>
                     </a>
@@ -993,12 +1003,15 @@
                     multiPrimaryTotalEl.textContent = formattedPrimary;
                 }
 
-                const promoNote = discountExplanation ? ` <span class="text-xs text-amber-300 font-bold ml-1.5">${discountExplanation}</span>` : '';
+                const promoNote = discountExplanation
+                    ? ` <span class="inline-block text-[11px] font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20 mt-1 md:mt-0 md:ml-1.5">${discountExplanation}</span>`
+                    : '';
+
                 if (multiTotalsSummaryEl) {
                     if (columnasPago && columnasPago.length > 1) {
-                        multiTotalsSummaryEl.innerHTML = `Total est. ${primaryCol}: <span class="text-green-400" id="multi-primary-total">${formattedPrimary}</span>${promoNote}`;
+                        multiTotalsSummaryEl.innerHTML = `<div class="flex flex-col md:flex-row md:items-baseline md:gap-1.5"><span class="text-slate-300 text-xs md:text-sm font-semibold">Total est. ${primaryCol}:</span> <div class="flex items-baseline gap-2 flex-wrap"><span class="text-green-400 text-base md:text-lg font-black" id="multi-primary-total">${formattedPrimary}</span>${promoNote}</div></div>`;
                     } else {
-                        multiTotalsSummaryEl.innerHTML = `Total est.: <span class="text-green-400" id="multi-primary-total">${formattedPrimary}</span>${promoNote}`;
+                        multiTotalsSummaryEl.innerHTML = `<div class="flex flex-col md:flex-row md:items-baseline md:gap-1.5"><span class="text-slate-300 text-xs md:text-sm font-semibold">Total est.:</span> <div class="flex items-baseline gap-2 flex-wrap"><span class="text-green-400 text-base md:text-lg font-black" id="multi-primary-total">${formattedPrimary}</span>${promoNote}</div></div>`;
                     }
                 }
 
@@ -1157,23 +1170,24 @@
                 });
             });
 
-            // Botón Limpiar selección
-            if (multiClearBtn) {
-                multiClearBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    selectedServices.clear();
-                    document.querySelectorAll('.price-item-checkbox, .price-item-checkbox-mobile').forEach(cb => {
-                        cb.checked = false;
-                    });
-                    document.querySelectorAll('.price-table-row').forEach(row => {
-                        row.classList.remove('bg-primary/5');
-                    });
-                    document.querySelectorAll('.price-item-card').forEach(card => {
-                        card.classList.remove('border-primary/50', 'bg-primary/5');
-                    });
-                    updateStickyBar();
+            // Botón Limpiar selección (Desktop y Mobile)
+            function clearSelection(e) {
+                if (e) e.preventDefault();
+                selectedServices.clear();
+                document.querySelectorAll('.price-item-checkbox, .price-item-checkbox-mobile').forEach(cb => {
+                    cb.checked = false;
                 });
+                document.querySelectorAll('.price-table-row').forEach(row => {
+                    row.classList.remove('bg-primary/5');
+                });
+                document.querySelectorAll('.price-item-card').forEach(card => {
+                    card.classList.remove('border-primary/50', 'bg-primary/5');
+                });
+                updateStickyBar();
             }
+            if (multiClearBtn) multiClearBtn.addEventListener('click', clearSelection);
+            const multiClearBtnMobile = document.getElementById('multi-clear-btn-mobile');
+            if (multiClearBtnMobile) multiClearBtnMobile.addEventListener('click', clearSelection);
 
             // Sincronización de botones individuales de fila con el carrito
             function handleRowWaBtnClick(e) {

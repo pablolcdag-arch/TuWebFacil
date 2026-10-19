@@ -296,3 +296,20 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** Proporcionar al cliente final retroalimentación visual inmediata en la misma lista: al tildar la segunda o tercera zona ve cómo los precios de las zonas que acaba de elegir bajan al instante en la pantalla, maximizando la percepción de ahorro y la conversión a pedidos por WhatsApp.
 - **Impacto:** Experiencia de usuario (UX) de nivel e-commerce moderno en la lista interactiva de servicios.
 
+## [19/10/2026] — Optimización Responsive Mobile: Desacoplamiento de Tarjetas y Carrito Flotante Mobile-First
+- **Decisión:**
+  1. En `templates/client_template.html`, se corrigió el solapamiento visual en las tarjetas de servicios móviles (`.price-item-card`):
+     - Se reubicó la etiqueta de método de pago (`.price-method-badge`) en la cabecera de la tarjeta junto al título del servicio (`<h4>`), contenida en un contenedor flexible con wrap (`<div class="flex items-center gap-1.5 flex-wrap">`).
+     - Se desacopló el bloque de precios (`.price-value`) en su propio contenedor `<div class="mt-1">`. De esta manera, el precio regular tachado, el precio final bonificado y el badge `-${effectiveDiscount}% OFF` disponen de todo el ancho horizontal sin competir con la etiqueta de pago ni solaparse detrás del botón verde de WhatsApp.
+     - En `.mobile-wa-btn`, se aseguró `shrink-0`, padding adaptable `px-3 py-2 sm:px-3.5 sm:py-2.5` y `<span class="whitespace-nowrap">` para evitar rupturas de layout en pantallas angostas.
+  2. En `templates/client_template.html`, se reestructuró la barra flotante inferior del carrito (`#price-multi-bar`):
+     - **Layout Responsivo Mobile-First:** Se configuró como columna en mobile y fila en desktop (`flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4`).
+     - **Fila Superior (Mobile):** Muestra el contador del carrito (`🛒 Carrito: X tratamientos`) a la izquierda y el botón de acción rápida `#multi-clear-btn-mobile` a la derecha.
+     - **Fila Intermedia (`#multi-totals-summary`):** Formateo estructurado con total en grande y la leyenda de descuento (`discountExplanation`) renderizada como una pastilla destacada (`bg-amber-400/10 text-amber-300 border border-amber-400/20 px-2 py-0.5 rounded-md text-[11px] font-bold`), evitando el quiebre de texto en 8 líneas verticales.
+     - **Fila Inferior / CTA Principal (Mobile):** El botón de WhatsApp (`#multi-wa-btn`) se expande al 100% del ancho en móviles (`w-full md:w-auto`) para una interacción táctil natural con el pulgar.
+     - **En Desktop (`md:`):** Se preserva la barra horizontal compacta con `#multi-clear-btn` visible junto al CTA.
+     - **JavaScript Unificado:** La función `clearSelection` quedó vinculada tanto al botón `#multi-clear-btn` (desktop) como a `#multi-clear-btn-mobile` (mobile).
+  3. En `scripts/utils/test_price_list_frontend.py`, se ampliaron las aserciones de `[TEST 6]` auditando la presencia de `#multi-clear-btn-mobile` y las clases responsive `flex flex-col md:flex-row` (100% PASS, Tests 1 al 8).
+  4. Cero regresiones en `test_price_list_backend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
+- **Razón:** Resolver problemas de maquetado en teléfonos móviles donde las palabras de los métodos de pago quedaban ocultas detrás de los botones de presupuesto y el carrito flotante se deformaba en una caja vertical desproporcionada.
+- **Impacto:** Experiencia de usuario (UX) móvil limpia, ergonómica y profesional tanto en pantallas angostas (360px - 390px) como en tablets y computadoras de escritorio.
