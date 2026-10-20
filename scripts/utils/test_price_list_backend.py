@@ -1182,6 +1182,404 @@ Corte y barba: $20.000"""
 
     print("  ✅ Promociones por Zonas (Combos), Acumulación, Detención Selectiva y Reseteos 100% verificados.")
 
+    # ---------------------------------------------------------
+    # TEST 13: Motor Conversacional de Ajuste de Precios y Promos por Producto
+    # ---------------------------------------------------------
+    print("\n[TEST 13] Verificando Motor de Ajuste de Precios y Promos por Producto (Fase 1)...")
+
+    mock_web_ajuste = {
+        "website_id": "w_ajuste_1",
+        "version_id": "v_ajuste_1",
+        "content": {
+            "titulo_web": "Estudio Belleza",
+            "lista_precios": {
+                "titulo": "Lista de Servicios",
+                "columnas_pago": ["Efectivo", "Transferencia", "Tarjeta"],
+                "items": [
+                    {
+                        "servicio": "Corte de Pelo",
+                        "precios": {
+                            "efectivo": "$10.000",
+                            "transferencia": "$11.000",
+                            "tarjeta": "$12.000"
+                        }
+                    },
+                    {
+                        "servicio": "Tintura Completa",
+                        "precios": {
+                            "efectivo": "$20.000",
+                            "transferencia": "$22.000",
+                            "tarjeta": "$24.000"
+                        }
+                    },
+                    {
+                        "servicio": "Alisado Keratina",
+                        "precios": {
+                            "efectivo": "$30.000",
+                            "transferencia": "$33.000",
+                            "tarjeta": "$36.000"
+                        }
+                    }
+                ]
+            }
+        },
+        "slug": "estudio-belleza",
+        "custom_domain": None
+    }
+
+    # 13A. Entrada al flujo de ajuste vía 'precios_ajustar' en submenú de precios
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_MENU_OPTION)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "precios_ajustar", "Tester")
+        assert mock_send_btns.called
+        msg_txt = mock_send_btns.call_args[0][1]
+        assert "Tus Servicios y Precios Actuales" in msg_txt
+        assert "Corte de Pelo" in msg_txt
+        assert "$10.000" in msg_txt
+        assert "¿Qué producto(s) deseás modificar?" in msg_txt
+        btns = mock_send_btns.call_args[0][2]
+        for b in btns:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "btn_menu" for b in btns)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_ADJUST_SELECTION
+
+    # 13B. Aumento porcentual general a 'todos' con validaciones, borrador y confirmación
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "todos", "Tester")
+        assert mock_send_btns.called
+        assert "Ajuste General de Precios" in mock_send_btns.call_args[0][1]
+        btns = mock_send_btns.call_args[0][2]
+        for b in btns:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "btn_adj_all_inc" for b in btns)
+        assert any(b["id"] == "btn_adj_all_dec" for b in btns)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_ADJUST_TYPE_ALL
+
+    # Selección de aumento
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "btn_adj_all_inc", "Tester")
+        assert mock_send_btns.called
+        assert "Aumento de Precios" in mock_send_btns.call_args[0][1]
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_ADJUST_PERCENT_VALUE
+
+    # Validación de porcentaje inválido
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "abc", "Tester")
+        assert mock_send_btns.called
+        assert "porcentaje válido entre 1 y 99" in mock_send_btns.call_args[0][1]
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_ADJUST_PERCENT_VALUE
+
+    # Porcentaje válido: 15%
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "15", "Tester")
+        assert mock_send_btns.called
+        msg_draft = mock_send_btns.call_args[0][1]
+        assert "Borrador de Ajuste de Precios generado" in msg_draft
+        assert "Aumento general del *15%*" in msg_draft
+        btns = mock_send_btns.call_args[0][2]
+        for b in btns:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "btn_adj_confirm" for b in btns)
+        assert any(b["id"] == "btn_adj_cancel" for b in btns)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.CONFIRM_PRICE_ADJUST_DRAFT
+
+        # Verificar token y persistencia en price_drafts SQLite
+        draft_token = bot_engine.get_user_state(test_wa)["temp_data"]["draft_token"]
+        assert len(draft_token) == 8
+        expected_url = f"https://estudio-belleza.tuweblista.com.ar/precios?preview={draft_token}"
+        assert expected_url in msg_draft
+
+        conn = sqlite3.connect(bot_engine.get_db_path())
+        c = conn.cursor()
+        c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (draft_token,))
+        row = c.fetchone()
+        conn.close()
+        assert row is not None
+        saved_draft = json.loads(row[0])
+        # Corte: $10.000 * 1.15 = $11.500
+        assert saved_draft["items"][0]["precios"]["efectivo"] == "$11.500"
+        # Tintura: $20.000 * 1.15 = $23.000
+        assert saved_draft["items"][1]["precios"]["efectivo"] == "$23.000"
+
+    # Confirmar y publicar borrador
+    web_confirm_ajuste = copy.deepcopy(mock_web_ajuste)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_confirm_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "btn_adj_confirm", "Tester")
+        mock_update.assert_called_once()
+        v_id, c_data = mock_update.call_args[0]
+        assert c_data["lista_precios"]["items"][0]["precios"]["efectivo"] == "$11.500"
+        assert mock_send_btns.called
+        assert "fueron publicados con éxito" in mock_send_btns.call_args[0][1]
+        assert any(b["id"] == "btn_menu" for b in mock_send_btns.call_args[0][2])
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.IDLE
+
+    # 13C. Rebaja general porcentual a 'todos' y cancelación
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_ADJUST_SELECTION)
+    with patch("bot_engine.send_whatsapp_buttons"), \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "todos", "Tester")
+    with patch("bot_engine.send_whatsapp_buttons"):
+        bot_engine.procesar_mensaje(test_wa, "btn_adj_all_dec", "Tester")
+    with patch("bot_engine.send_whatsapp_buttons"), \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "10", "Tester")
+
+    assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.CONFIRM_PRICE_ADJUST_DRAFT
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+         patch("bot_engine.actualizar_web_content") as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "btn_adj_cancel", "Tester")
+        mock_update.assert_not_called()
+        assert "Cambios cancelados" in mock_send_msg.call_args_list[0][0][1]
+        mock_send_list.assert_called_once()
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    # 13D. Ajuste de precio exacto a 1 producto (Corte de Pelo)
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_ADJUST_SELECTION)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "1", "Tester")
+        assert mock_send_btns.called
+        msg_act = mock_send_btns.call_args[0][1]
+        assert "Corte de Pelo" in msg_act
+        btns = mock_send_btns.call_args[0][2]
+        for b in btns:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "btn_prod_exact" for b in btns)
+        assert any(b["id"] == "btn_prod_promo" for b in btns)
+        assert any(b["id"] == "btn_prod_percent" for b in btns)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_SINGLE_PRODUCT_ACTION
+
+    # Seleccionar precio exacto
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "btn_prod_exact", "Tester")
+        assert mock_send_btns.called
+        assert "Modificar Precio Exacto" in mock_send_btns.call_args[0][1]
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_EXACT_PRICE_VALUE
+
+    # Ingresar nuevo precio exacto: 18000
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "18000", "Tester")
+        assert mock_send_btns.called
+        msg_draft = mock_send_btns.call_args[0][1]
+        assert "Nuevo precio para *Corte de Pelo*: $18.000" in msg_draft
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.CONFIRM_PRICE_ADJUST_DRAFT
+        draft_token = bot_engine.get_user_state(test_wa)["temp_data"]["draft_token"]
+        conn = sqlite3.connect(bot_engine.get_db_path())
+        c = conn.cursor()
+        c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (draft_token,))
+        row = c.fetchone()
+        conn.close()
+        saved = json.loads(row[0])
+        # Efectivo actualizado a $18.000
+        assert saved["items"][0]["precios"]["efectivo"] == "$18.000"
+        # Escala proporcional en transferencia: 11.000 * (18000/10000) = 19.800
+        assert saved["items"][0]["precios"]["transferencia"] == "$19.800"
+
+    # 13E. Promoción % OFF individual a 1 producto y posterior quita
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_ADJUST_SELECTION)
+    with patch("bot_engine.send_whatsapp_buttons"), \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "2", "Tester")
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "btn_prod_promo", "Tester")
+        assert mock_send_btns.called
+        assert "Poner en Promoción" in mock_send_btns.call_args[0][1]
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROD_PROMO_PERCENT
+
+    # Asignar 20% OFF a Tintura Completa
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "20", "Tester")
+        assert mock_send_btns.called
+        assert "Promoción de *20% OFF* asignada a *Tintura Completa*" in mock_send_btns.call_args[0][1]
+        draft_token = bot_engine.get_user_state(test_wa)["temp_data"]["draft_token"]
+        conn = sqlite3.connect(bot_engine.get_db_path())
+        c = conn.cursor()
+        c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (draft_token,))
+        row = c.fetchone()
+        conn.close()
+        saved = json.loads(row[0])
+        assert saved["items"][1]["descuento"] == 20
+
+    # Quitar la promoción individualmente
+    web_con_promo_prod = copy.deepcopy(mock_web_ajuste)
+    web_con_promo_prod["content"]["lista_precios"]["items"][1]["descuento"] = 20
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_ADJUST_SELECTION)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_con_promo_prod):
+        bot_engine.procesar_mensaje(test_wa, "2", "Tester")
+        assert mock_send_btns.called
+        btns = mock_send_btns.call_args[0][2]
+        assert any(b["id"] == "btn_prod_remove_promo" and b["title"] == "⏹️ Quitar Promo" for b in btns)
+
+    # Click en Quitar Promo
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_con_promo_prod):
+        bot_engine.procesar_mensaje(test_wa, "btn_prod_remove_promo", "Tester")
+        assert mock_send_btns.called
+        assert "Se quitó la promoción de *Tintura Completa*" in mock_send_btns.call_args[0][1]
+        draft_token = bot_engine.get_user_state(test_wa)["temp_data"]["draft_token"]
+        conn = sqlite3.connect(bot_engine.get_db_path())
+        c = conn.cursor()
+        c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (draft_token,))
+        row = c.fetchone()
+        conn.close()
+        saved = json.loads(row[0])
+        assert "descuento" not in saved["items"][1]
+
+    # 13F. Promoción % OFF y Quita a múltiples productos ('1, 3' o '1 y 3')
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_ADJUST_SELECTION)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "1 y 3", "Tester")
+        assert mock_send_btns.called
+        assert "Productos Seleccionados" in mock_send_btns.call_args[0][1]
+        btns = mock_send_btns.call_args[0][2]
+        for b in btns:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "btn_multi_promo" for b in btns)
+        assert any(b["id"] == "btn_multi_percent" for b in btns)
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_MULTI_PRODUCT_ACTION
+
+    # Poner en promo ambos
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "btn_multi_promo", "Tester")
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_PROD_PROMO_PERCENT
+
+    # Asignar 30% OFF a ambos
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "30", "Tester")
+        assert mock_send_btns.called
+        assert "Promoción de *30% OFF* asignada a 2 productos" in mock_send_btns.call_args[0][1]
+        draft_token = bot_engine.get_user_state(test_wa)["temp_data"]["draft_token"]
+        conn = sqlite3.connect(bot_engine.get_db_path())
+        c = conn.cursor()
+        c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (draft_token,))
+        row = c.fetchone()
+        conn.close()
+        saved = json.loads(row[0])
+        assert saved["items"][0]["descuento"] == 30
+        assert saved["items"][2]["descuento"] == 30
+
+    # Quitar promociones múltiples
+    web_multi_promos = copy.deepcopy(mock_web_ajuste)
+    web_multi_promos["content"]["lista_precios"]["items"][0]["descuento"] = 30
+    web_multi_promos["content"]["lista_precios"]["items"][2]["descuento"] = 30
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_ADJUST_SELECTION)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_multi_promos):
+        bot_engine.procesar_mensaje(test_wa, "1, 3", "Tester")
+        assert mock_send_btns.called
+        btns = mock_send_btns.call_args[0][2]
+        assert any(b["id"] == "btn_multi_remove_promo" and b["title"] == "⏹️ Quitar Promos" for b in btns)
+
+    # Click en Quitar Promos múltiples
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=web_multi_promos):
+        bot_engine.procesar_mensaje(test_wa, "btn_multi_remove_promo", "Tester")
+        assert mock_send_btns.called
+        assert "Se quitaron las promociones de los 2 productos seleccionados" in mock_send_btns.call_args[0][1]
+        draft_token = bot_engine.get_user_state(test_wa)["temp_data"]["draft_token"]
+        conn = sqlite3.connect(bot_engine.get_db_path())
+        c = conn.cursor()
+        c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (draft_token,))
+        row = c.fetchone()
+        conn.close()
+        saved = json.loads(row[0])
+        assert "descuento" not in saved["items"][0]
+        assert "descuento" not in saved["items"][2]
+
+    # 13G. Ajuste porcentual a múltiples productos ('btn_multi_percent')
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_ADJUST_SELECTION)
+    with patch("bot_engine.send_whatsapp_buttons"), \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "1, 2", "Tester")
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "btn_multi_percent", "Tester")
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_ADJUST_TYPE_ALL
+    with patch("bot_engine.send_whatsapp_buttons"):
+        bot_engine.procesar_mensaje(test_wa, "btn_adj_all_inc", "Tester")
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "10", "Tester")
+        assert mock_send_btns.called
+        assert "Aumento del *10%* aplicado a 2 producto(s)" in mock_send_btns.call_args[0][1]
+        draft_token = bot_engine.get_user_state(test_wa)["temp_data"]["draft_token"]
+        conn = sqlite3.connect(bot_engine.get_db_path())
+        c = conn.cursor()
+        c.execute("SELECT draft_prices FROM price_drafts WHERE token = ?", (draft_token,))
+        row = c.fetchone()
+        conn.close()
+        saved = json.loads(row[0])
+        assert saved["items"][0]["precios"]["efectivo"] == "$11.000"
+        assert saved["items"][1]["precios"]["efectivo"] == "$22.000"
+        assert saved["items"][2]["precios"]["efectivo"] == "$30.000"  # Item 2 intacto
+
+    # 13H. Protección anti-confusión en WAITING_FOR_PRICE_LIST y redirección con 'btn_go_adjust'
+    bot_engine.set_user_state(test_wa, bot_engine.WAITING_FOR_PRICE_LIST)
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(test_wa, "Quiero aumentar los precios un 10%", "Tester")
+        assert mock_send_btns.called
+        assert "Veo que querés ajustar precios o promociones" in mock_send_btns.call_args[0][1]
+        btns = mock_send_btns.call_args[0][2]
+        for b in btns:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "btn_go_adjust" and b["title"] == "✏️ Ajustar Precios" for b in btns)
+        assert any(b["id"] == "btn_menu" and b["title"] == "📱 Menú Principal" for b in btns)
+
+    # Redirección con btn_go_adjust entra a iniciar_ajuste_precios
+    with patch("bot_engine.send_whatsapp_buttons") as mock_send_btns, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_web_ajuste):
+        bot_engine.procesar_mensaje(test_wa, "btn_go_adjust", "Tester")
+        assert mock_send_btns.called
+        assert "Tus Servicios y Precios Actuales" in mock_send_btns.call_args[0][1]
+        assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.WAITING_FOR_ADJUST_SELECTION
+
+    # 13I. Reseteo universal con 'cancelar' y 'btn_menu' en todos los nuevos estados
+    estados_ajuste = [
+        bot_engine.WAITING_FOR_ADJUST_SELECTION,
+        bot_engine.WAITING_FOR_ADJUST_TYPE_ALL,
+        bot_engine.WAITING_FOR_ADJUST_PERCENT_VALUE,
+        bot_engine.WAITING_FOR_SINGLE_PRODUCT_ACTION,
+        bot_engine.WAITING_FOR_EXACT_PRICE_VALUE,
+        bot_engine.WAITING_FOR_PROD_PROMO_PERCENT,
+        bot_engine.WAITING_FOR_MULTI_PRODUCT_ACTION,
+        bot_engine.CONFIRM_PRICE_ADJUST_DRAFT,
+    ]
+    for st in estados_ajuste:
+        bot_engine.set_user_state(test_wa, st, {"dummy": 123})
+        with patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+             patch("bot_engine.actualizar_web_content") as mock_update:
+            bot_engine.procesar_mensaje(test_wa, "cancelar", "Tester")
+            mock_update.assert_not_called()
+            mock_send_list.assert_called_once()
+            assert mock_send_list.call_args[0][4] == "Panel de Control"
+            assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+        bot_engine.set_user_state(test_wa, st, {"dummy": 123})
+        with patch("bot_engine.send_whatsapp_list") as mock_send_list, \
+             patch("bot_engine.actualizar_web_content") as mock_update:
+            bot_engine.procesar_mensaje(test_wa, "btn_menu", "Tester")
+            mock_update.assert_not_called()
+            mock_send_list.assert_called_once()
+            assert mock_send_list.call_args[0][4] == "Panel de Control"
+            assert bot_engine.get_user_state(test_wa)["estado"] == bot_engine.MAIN_MENU
+
+    print("  ✅ Ajuste selectivo, masivo, promos por producto, anti-confusión y reseteos 100% verificados.")
+
     # Limpiar estado final
     bot_engine.clear_user_state(test_wa)
 

@@ -323,3 +323,22 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   5. Cero regresiones en `test_price_list_backend.py`, `test_price_list_frontend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
 - **Razón:** Habilitar la estrategia de prospección comercial outbound ("Demo Servida en Bandeja"), permitiendo al administrador armar demos personalizadas para comercios contactados por Google Maps o redes sin toparse con el bloqueo de cupo.
 - **Impacto:** Capacidad operativa de prospección a gran escala para captación de clientes de forma proactiva.
+
+## [20/10/2026] — Implementación del Motor de Ajuste de Precios y Promociones por Producto (Fase 1: Backend & Bot FSM)
+- **Decisión:**
+  1. En `bot_engine.py`, se implementó la FSM y el motor conversacional interactivo para el ajuste de precios y promociones por ítem:
+     - Opción `PRECIOS_AJUSTAR` ("✏️ Ajustar Precios/Promos") en el submenú de precios (`mostrar_menu_precios`).
+     - `WAITING_FOR_ADJUST_SELECTION`: Muestra la lista numerada de servicios con precios actuales y badges (`🏷️ X% OFF`), permitiendo seleccionar `1`, varios (`1, 3` o `1 y 3`) o `todos`.
+     - `WAITING_FOR_ADJUST_TYPE_ALL`: Selección guiada por botones interactivos (`[ 📈 Aumentar Precios ]` y `[ 📉 Bajar Precios ]`) para evitar que el usuario deba escribir signos en el teclado del celular.
+     - `WAITING_FOR_ADJUST_PERCENT_VALUE`: Ingreso simple de porcentaje entero ($1$ a $99$) con validación defensiva.
+     - `WAITING_FOR_SINGLE_PRODUCT_ACTION`: Botones contextuales (`[ 💰 Precio Exacto ]`, `[ 🏷️ Poner en Promo ]`, `[ ⏹️ Quitar Promo ]` / `[ 📈 Aumentar por % ]`).
+     - `WAITING_FOR_EXACT_PRICE_VALUE`: Ingreso de monto exacto para un producto con actualización proporcional de columnas alternativas.
+     - `WAITING_FOR_PROD_PROMO_PERCENT`: Asignación de descuento individual o múltiple (`"descuento": X` en el ítem de `lista_precios.items`).
+     - `WAITING_FOR_MULTI_PRODUCT_ACTION`: Acciones sobre múltiples productos (`[ 🏷️ Poner en Promo ]`, `[ 📈 Ajustar por % ]`, `[ ⏹️ Quitar Promos ]`).
+     - `CONFIRM_PRICE_ADJUST_DRAFT`: Generación de vista previa en `price_drafts` con token de 8 caracteres hex (`/precios?preview=TOKEN`), confirmación con botón `[ ✅ Publicar Precios ]` o descarte limpio con `[ ❌ Cancelar ]`.
+     - Protección anti-confusión en `WAITING_FOR_PRICE_LIST`: Intercepta frases de intención de ajuste (*"aumentar"*, *"cambiar precios"*, *"subir precios"*, *"descuentos"*) antes del parser de IA, ofreciendo botones guiados (`[ ✏️ Ajustar Precios ]` y `[ 📱 Menú Principal ]`).
+     - `round_clean_price()`: Redondeo prolijo a múltiplos de \$100 ($\ge \$5.000$) o \$50 ($<\$5.000$).
+  2. En `scripts/utils/test_price_list_backend.py`, se implementó el bloque `[TEST 13]` con cobertura integral de todos los flujos de ajuste, asignación y quita de promos, anti-confusión y reseteos (100% PASS).
+  3. Cero regresiones en `test_price_list_frontend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
+- **Razón:** Permitir a los comerciantes gestionar la inflación (aumentos masivos o individuales) y armar promociones selectivas por producto directamente desde WhatsApp con máxima ergonomía móvil (sin signos `+`, `-` ni `%`), evitando que tengan que rehacer sus planillas Excel.
+- **Impacto:** Herramienta comercial y operativa indispensable para comerciantes en Argentina, reduciendo la fricción de actualización de precios a segundos.

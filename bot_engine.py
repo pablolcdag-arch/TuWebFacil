@@ -7,7 +7,7 @@ import secrets
 from dotenv import load_dotenv
 from supabase import create_client
 from sender import send_whatsapp_message, send_whatsapp_image, download_whatsapp_media, send_whatsapp_buttons, send_whatsapp_list
-from scripts.utils.price_list_parser import parse_price_list
+from scripts.utils.price_list_parser import parse_price_list, format_price
 import logging
 import uuid
 from datetime import datetime, date
@@ -59,6 +59,14 @@ WAITING_FOR_PROMO_ZONAS_DISCOUNT_2 = "WAITING_FOR_PROMO_ZONAS_DISCOUNT_2"
 WAITING_FOR_PROMO_ZONAS_ACUMULABLE = "WAITING_FOR_PROMO_ZONAS_ACUMULABLE"
 CONFIRM_PROMO_ZONAS_DRAFT = "CONFIRM_PROMO_ZONAS_DRAFT"
 WAITING_FOR_STOP_PROMO_CHOICE = "WAITING_FOR_STOP_PROMO_CHOICE"
+WAITING_FOR_ADJUST_SELECTION = "WAITING_FOR_ADJUST_SELECTION"
+WAITING_FOR_ADJUST_TYPE_ALL = "WAITING_FOR_ADJUST_TYPE_ALL"
+WAITING_FOR_ADJUST_PERCENT_VALUE = "WAITING_FOR_ADJUST_PERCENT_VALUE"
+WAITING_FOR_SINGLE_PRODUCT_ACTION = "WAITING_FOR_SINGLE_PRODUCT_ACTION"
+WAITING_FOR_EXACT_PRICE_VALUE = "WAITING_FOR_EXACT_PRICE_VALUE"
+WAITING_FOR_PROD_PROMO_PERCENT = "WAITING_FOR_PROD_PROMO_PERCENT"
+WAITING_FOR_MULTI_PRODUCT_ACTION = "WAITING_FOR_MULTI_PRODUCT_ACTION"
+CONFIRM_PRICE_ADJUST_DRAFT = "CONFIRM_PRICE_ADJUST_DRAFT"
 
 # Botón interactivo universal para evitar dead-ends
 BTN_VOLVER_MENU = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
@@ -428,6 +436,7 @@ def mostrar_menu_precios(wa_id):
     if tiene_lista:
         options = [
             {"id": "PRECIOS_ACTUALIZAR", "title": "📄 Actualizar Precios", "description": "Subir nuevo Excel, PDF o texto"},
+            {"id": "PRECIOS_AJUSTAR", "title": "✏️ Ajustar Precios/Promos", "description": "Aumentar, rebajar o poner promos a productos"},
             {"id": "PROMO_FECHA_START", "title": "📅 Promo por Fecha", "description": "Reserva anticipada con % de descuento"},
             {"id": "PROMO_ZONAS_START", "title": "🎯 Promo por Zonas", "description": "Descuento por cantidad de zonas"}
         ]
@@ -729,6 +738,144 @@ def generar_borrador_promocion_zonas(wa_id, temp_data, nombre):
     buttons = [
         {"id": "btn_activar_promo_zonas", "title": "✅ Activar Promo"},
         {"id": "btn_cancelar_promo_zonas", "title": "❌ Cancelar"}
+    ]
+    send_whatsapp_buttons(wa_id, msg, buttons)
+    return True
+
+
+def extract_numeric_price(val):
+    """Extrae el valor numérico (float) de un string o número de precio."""
+    if val is None:
+        return 0.0
+    val_str = str(val).strip()
+    if not val_str or val_str in ["-", "nan", "none", "null"]:
+        return 0.0
+    cleaned = val_str.replace("$", "").replace("ARS", "").replace("USD", "").strip()
+    try:
+        if "," in cleaned and "." in cleaned:
+            return float(cleaned.replace(".", "").replace(",", "."))
+        elif "," in cleaned and "." not in cleaned:
+            return float(cleaned.replace(",", "."))
+        elif "." in cleaned:
+            parts = cleaned.split(".")
+            if len(parts[-1]) == 3:
+                return float(cleaned.replace(".", ""))
+            else:
+                return float(cleaned)
+        else:
+            return float(cleaned)
+    except Exception:
+        digits = re.sub(r"[^\d]", "", val_str)
+        return float(digits) if digits else 0.0
+
+
+def round_clean_price(num):
+    """Redondea importes al múltiplo de 50 o 100 más cercano para evitar números desprolijos."""
+    if num <= 0:
+        return 0
+    if num >= 5000:
+        return int(round(num / 100.0) * 100)
+    elif num >= 100:
+        return int(round(num / 50.0) * 50)
+    return int(round(num))
+
+
+def get_item_primary_price(item):
+    """Obtiene el precio representativo (generalmente efectivo) para mostrar en listas."""
+    if not isinstance(item, dict):
+        return "-"
+    precios = item.get("precios", {})
+    if isinstance(precios, dict):
+        if "efectivo" in precios and precios["efectivo"] and precios["efectivo"] != "-":
+            return precios["efectivo"]
+        for p in precios.values():
+            if p and p != "-":
+                return p
+    elif isinstance(precios, (str, int, float)):
+        return format_price(precios)
+    return "-"
+
+
+def iniciar_ajuste_precios(wa_id, nombre):
+    """Inicia el asistente guiado para ajustar precios o promociones."""
+    web_info = obtener_web_del_cliente(wa_id)
+    if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios") or not web_info["content"]["lista_precios"].get("items"):
+        send_whatsapp_message(wa_id, "⚠️ Necesitás tener una lista de precios publicada antes de poder ajustar precios o promociones.")
+        set_user_state(wa_id, MAIN_MENU, {})
+        procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+        return False
+
+    items = web_info["content"]["lista_precios"]["items"]
+    lines = ["📋 *Tus Servicios y Precios Actuales:*\n"]
+    num_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    for idx, item in enumerate(items, 1):
+        prefix = num_emoji[idx - 1] if idx <= 10 else f"{idx}️⃣"
+        price_str = get_item_primary_price(item)
+        promo_badge = f" (🏷️ {item['descuento']}% OFF)" if item.get("descuento") else ""
+        lines.append(f"{prefix} *{item.get('servicio', 'Servicio')}:* {price_str}{promo_badge}")
+
+    lines.append("\n👉 *¿Qué producto(s) deseás modificar?*")
+    lines.append("• Escribí el número de un producto (ej: *1*).")
+    lines.append("• O varios separados por coma (ej: *1, 3* o *1 y 3*).")
+    lines.append("• O escribí *todos* para toda la lista.\n")
+    lines.append("💡 _(Tocá el botón abajo para cancelar)_")
+
+    msg = "\n".join(lines)
+    send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+    set_user_state(wa_id, WAITING_FOR_ADJUST_SELECTION, {})
+    return True
+
+
+def guardar_y_enviar_borrador_ajuste(wa_id, web_info, draft_prices, resumen_ajuste, nombre):
+    """Guarda el borrador de ajuste en price_drafts SQLite y envía mensaje con preview."""
+    draft_token = secrets.token_hex(4)
+
+    conn = None
+    try:
+        conn = sqlite3.connect(get_db_path(), timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS price_drafts (
+                token TEXT PRIMARY KEY,
+                phone TEXT,
+                draft_prices TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        c.execute("""
+            INSERT OR REPLACE INTO price_drafts (token, phone, draft_prices)
+            VALUES (?, ?, ?)
+        """, (draft_token, wa_id, json.dumps(draft_prices)))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error guardando price_draft de ajuste en SQLite: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+    temp_data = {
+        "draft_token": draft_token,
+        "draft_prices": draft_prices,
+        "resumen_ajuste": resumen_ajuste
+    }
+    set_user_state(wa_id, CONFIRM_PRICE_ADJUST_DRAFT, temp_data)
+
+    slug = web_info.get("slug", "mi-web")
+    if web_info.get("custom_domain"):
+        preview_url = f"https://{web_info['custom_domain']}/precios?preview={draft_token}"
+    else:
+        preview_url = f"https://{slug}.tuweblista.com.ar/precios?preview={draft_token}"
+
+    msg = (f"🎉 *¡Borrador de Ajuste de Precios generado!*\n\n"
+           f"{resumen_ajuste}\n\n"
+           f"🔗 *Mirá cómo quedaron tus precios en tu web antes de publicar:*\n"
+           f"{preview_url}\n\n"
+           f"¿Deseás publicar estos cambios en tu web ahora mismo?")
+
+    buttons = [
+        {"id": "btn_adj_confirm", "title": "✅ Publicar Precios"},
+        {"id": "btn_adj_cancel", "title": "❌ Cancelar"}
     ]
     send_whatsapp_buttons(wa_id, msg, buttons)
     return True
@@ -1547,6 +1694,10 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
 
     elif estado_actual == WAITING_FOR_PRICE_LIST:
+        if texto_limpio in ["btn_go_adjust", "ajustar", "ajustar precios"]:
+            iniciar_ajuste_precios(wa_id, nombre)
+            return
+
         if texto_limpio in ["quitar", "borrar", "eliminar", "ocultar"]:
             web_info = obtener_web_del_cliente(wa_id)
             if web_info and web_info.get("content") and "lista_precios" in web_info["content"] and web_info["content"]["lista_precios"]:
@@ -1562,6 +1713,22 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 send_whatsapp_message(wa_id, "ℹ️ Tu web no tenía ninguna lista de precios publicada.")
             set_user_state(wa_id, MAIN_MENU, {})
             procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+            return
+
+        # Protección anti-confusión: detectar intenciones humanas de ajuste antes del parser
+        intenciones_ajuste = [
+            "aumentar", "subir precio", "subir precios", "cambiar precio", "cambiar precios",
+            "bajar precio", "bajar precios", "poner promo", "poner en promo", "descuento",
+            "descuentos", "rebajar", "modificar precio", "modificar precios", "ajustar precio", "ajustar precios"
+        ]
+        if any(k in texto_limpio for k in intenciones_ajuste):
+            msg = ("💡 Veo que querés ajustar precios o promociones de tu lista.\n\n"
+                   "Podés entrar al asistente guiado o volver al menú principal:")
+            buttons = [
+                {"id": "btn_go_adjust", "title": "✏️ Ajustar Precios"},
+                {"id": "btn_menu", "title": "📱 Menú Principal"}
+            ]
+            send_whatsapp_buttons(wa_id, msg, buttons)
             return
 
         send_whatsapp_message(wa_id, "⏳ Analizando tu lista de precios... aguardá unos segundos.")
@@ -1622,6 +1789,8 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                    "💡 _(Escribí *cancelar* o *volver* para regresar al menú anterior)_")
             send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
             set_user_state(wa_id, WAITING_FOR_PRICE_LIST, {})
+        elif texto_limpio in ["precios_ajustar", "ajustar precios", "ajustar", "btn_go_adjust", "ajustar_precios"]:
+            iniciar_ajuste_precios(wa_id, nombre)
         elif texto_limpio in ["promo_fecha_start", "promo", "promocion", "promo por fecha", "2"]:
             web_info = obtener_web_del_cliente(wa_id)
             if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
@@ -1966,6 +2135,380 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 {"id": "frenar_promo_ambas", "title": "🛑 Frenar Ambas"}
             ]
             send_whatsapp_buttons(wa_id, "Por favor seleccioná qué promoción deseás detener:", buttons)
+
+    elif estado_actual == WAITING_FOR_ADJUST_SELECTION:
+        web_info = obtener_web_del_cliente(wa_id)
+        if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
+            send_whatsapp_message(wa_id, "⚠️ No se encontró la lista de precios. Escribí *menu* para volver.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return
+
+        items = web_info["content"]["lista_precios"].get("items", [])
+
+        # Caso A: Toda la lista ("todos")
+        if texto_limpio in ["todos", "todas", "todo", "all", "toda la lista"]:
+            temp_data = {"target": "all"}
+            set_user_state(wa_id, WAITING_FOR_ADJUST_TYPE_ALL, temp_data)
+            msg = ("📈 *Ajuste General de Precios*\n\n"
+                   "¿Qué tipo de ajuste deseás aplicar a toda tu lista?")
+            buttons = [
+                {"id": "btn_adj_all_inc", "title": "📈 Aumentar Precios"},
+                {"id": "btn_adj_all_dec", "title": "📉 Bajar Precios"},
+                {"id": "btn_menu", "title": "📱 Volver al Menú"}
+            ]
+            send_whatsapp_buttons(wa_id, msg, buttons)
+            return
+
+        # Caso B: Índices de productos
+        clean_input = re.sub(r'\by\b', ',', texto_limpio)
+        raw_nums = re.findall(r'\d+', clean_input)
+        indices = []
+        for n in raw_nums:
+            idx = int(n) - 1
+            if 0 <= idx < len(items) and idx not in indices:
+                indices.append(idx)
+
+        if len(indices) == 1:
+            temp_data = {"target": "indices", "indices": indices}
+            set_user_state(wa_id, WAITING_FOR_SINGLE_PRODUCT_ACTION, temp_data)
+            item = items[indices[0]]
+            price_str = get_item_primary_price(item)
+            promo_badge = f" (🏷️ {item['descuento']}% OFF)" if item.get("descuento") else ""
+            msg = (f"👉 *Producto Seleccionado:*\n\n"
+                   f"*{item.get('servicio', 'Servicio')}* - {price_str}{promo_badge}\n\n"
+                   f"¿Qué acción deseás realizar sobre este producto?")
+            has_promo = bool(item.get("descuento"))
+            buttons = [
+                {"id": "btn_prod_exact", "title": "💰 Precio Exacto"},
+                {"id": "btn_prod_promo", "title": "🏷️ Poner en Promo"}
+            ]
+            if has_promo:
+                buttons.append({"id": "btn_prod_remove_promo", "title": "⏹️ Quitar Promo"})
+            else:
+                buttons.append({"id": "btn_prod_percent", "title": "📈 Aumentar por %"})
+            send_whatsapp_buttons(wa_id, msg, buttons)
+            return
+
+        elif len(indices) > 1:
+            temp_data = {"target": "indices", "indices": indices}
+            set_user_state(wa_id, WAITING_FOR_MULTI_PRODUCT_ACTION, temp_data)
+            num_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+            sel_lines = []
+            for i in indices:
+                it = items[i]
+                prefix = num_emoji[i] if i < 10 else f"{i+1}️⃣"
+                p_str = get_item_primary_price(it)
+                p_badge = f" (🏷️ {it['descuento']}% OFF)" if it.get("descuento") else ""
+                sel_lines.append(f"{prefix} *{it.get('servicio', 'Servicio')}:* {p_str}{p_badge}")
+
+            msg = ("📋 *Productos Seleccionados:*\n\n" +
+                   "\n".join(sel_lines) +
+                   "\n\n¿Qué acción deseás realizar sobre estos productos?")
+            has_any_promo = any(items[i].get("descuento") for i in indices)
+            buttons = [
+                {"id": "btn_multi_promo", "title": "🏷️ Poner en Promo"},
+                {"id": "btn_multi_percent", "title": "📈 Ajustar por %"}
+            ]
+            if has_any_promo:
+                buttons.append({"id": "btn_multi_remove_promo", "title": "⏹️ Quitar Promos"})
+            else:
+                buttons.append({"id": "btn_menu", "title": "📱 Volver al Menú"})
+            send_whatsapp_buttons(wa_id, msg, buttons)
+            return
+
+        else:
+            send_whatsapp_buttons(wa_id, "⚠️ No pude identificar los productos. Por favor escribí el número de un producto (ej: *1*), varios separados por coma (ej: *1, 3*) o la palabra *todos*:", btn_volver_menu)
+
+    elif estado_actual == WAITING_FOR_ADJUST_TYPE_ALL:
+        user_session = get_user_state(wa_id)
+        temp_data = user_session.get("temp_data", {})
+        target = temp_data.get("target", "all")
+        target_desc = "a toda la lista" if target == "all" else "a los productos seleccionados"
+
+        if texto_limpio in ["btn_adj_all_inc", "btn_adj_inc", "aumentar", "subir", "1"]:
+            temp_data["direction"] = "inc"
+            set_user_state(wa_id, WAITING_FOR_ADJUST_PERCENT_VALUE, temp_data)
+            msg = (f"📈 *Aumento de Precios*\n\n"
+                   f"¿Qué porcentaje deseás aumentar {target_desc}?\n"
+                   f"*(Solo escribí el número, ej: 10, 15, 20):*\n\n"
+                   f"💡 _(Escribí volver para cancelar)_")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+        elif texto_limpio in ["btn_adj_all_dec", "btn_adj_dec", "bajar", "rebajar", "2"]:
+            temp_data["direction"] = "dec"
+            set_user_state(wa_id, WAITING_FOR_ADJUST_PERCENT_VALUE, temp_data)
+            msg = (f"📉 *Rebaja de Precios*\n\n"
+                   f"¿Qué porcentaje deseás rebajar {target_desc}?\n"
+                   f"*(Solo escribí el número, ej: 10, 15, 20):*\n\n"
+                   f"💡 _(Escribí volver para cancelar)_")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+        else:
+            buttons = [
+                {"id": "btn_adj_all_inc", "title": "📈 Aumentar Precios"},
+                {"id": "btn_adj_all_dec", "title": "📉 Bajar Precios"},
+                {"id": "btn_menu", "title": "📱 Volver al Menú"}
+            ]
+            send_whatsapp_buttons(wa_id, "Por favor seleccioná si deseás aumentar o bajar los precios:", buttons)
+
+    elif estado_actual == WAITING_FOR_ADJUST_PERCENT_VALUE:
+        clean_num = re.sub(r'[^\d]', '', texto)
+        if not clean_num or not (1 <= int(clean_num) <= 99):
+            send_whatsapp_buttons(wa_id, "⚠️ Por favor ingresá un porcentaje válido entre 1 y 99 (por ejemplo: 15 para 15%):", btn_volver_menu)
+            return
+
+        pct = int(clean_num)
+        user_session = get_user_state(wa_id)
+        temp_data = user_session.get("temp_data", {})
+        target = temp_data.get("target", "all")
+        direction = temp_data.get("direction", "inc")
+        indices = temp_data.get("indices", [])
+
+        web_info = obtener_web_del_cliente(wa_id)
+        if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
+            send_whatsapp_message(wa_id, "⚠️ No pudimos encontrar tu lista de precios activa.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return
+
+        current_lp = web_info["content"]["lista_precios"]
+        draft_prices = json.loads(json.dumps(current_lp))
+
+        if target == "all":
+            target_items = draft_prices.get("items", [])
+            resumen = f"{'Aumento' if direction == 'inc' else 'Rebaja'} general del *{pct}%* aplicado a todos los productos."
+        else:
+            target_items = [draft_prices["items"][i] for i in indices if i < len(draft_prices.get("items", []))]
+            resumen = f"{'Aumento' if direction == 'inc' else 'Rebaja'} del *{pct}%* aplicado a {len(target_items)} producto(s)."
+
+        for item in target_items:
+            precios = item.get("precios", {})
+            for col, val in list(precios.items()):
+                num = extract_numeric_price(val)
+                if num > 0:
+                    if direction == "inc":
+                        new_num = num * (1.0 + pct / 100.0)
+                    else:
+                        new_num = num * (1.0 - pct / 100.0)
+                    cleaned = round_clean_price(new_num)
+                    precios[col] = format_price(cleaned)
+
+        guardar_y_enviar_borrador_ajuste(wa_id, web_info, draft_prices, resumen, nombre)
+
+    elif estado_actual == WAITING_FOR_SINGLE_PRODUCT_ACTION:
+        user_session = get_user_state(wa_id)
+        temp_data = user_session.get("temp_data", {})
+        indices = temp_data.get("indices", [0])
+
+        web_info = obtener_web_del_cliente(wa_id)
+        if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
+            send_whatsapp_message(wa_id, "⚠️ No se encontró la lista de precios.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return
+
+        current_lp = web_info["content"]["lista_precios"]
+        item = current_lp["items"][indices[0]]
+
+        if texto_limpio in ["btn_prod_exact", "precio exacto", "exacto", "1"]:
+            set_user_state(wa_id, WAITING_FOR_EXACT_PRICE_VALUE, temp_data)
+            p_str = get_item_primary_price(item)
+            msg = (f"💰 *Modificar Precio Exacto*\n\n"
+                   f"Producto: *{item.get('servicio', 'Servicio')}*\n"
+                   f"Precio actual: {p_str}\n\n"
+                   f"Escribí el nuevo precio que querés ponerle\n"
+                   f"*(Por ejemplo: 18000 o $18.000):*\n\n"
+                   f"💡 _(Escribí volver para cancelar)_")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+        elif texto_limpio in ["btn_prod_promo", "poner en promo", "promo", "2"]:
+            set_user_state(wa_id, WAITING_FOR_PROD_PROMO_PERCENT, temp_data)
+            msg = (f"🏷️ *Poner en Promoción*\n\n"
+                   f"Producto: *{item.get('servicio', 'Servicio')}*\n\n"
+                   f"¿Qué porcentaje de descuento querés asignarle?\n"
+                   f"*(Solo escribí el número, ej: 15 o 20 para 20% OFF):*\n\n"
+                   f"💡 _(Escribí volver para cancelar)_")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+        elif texto_limpio in ["btn_prod_remove_promo", "quitar promo", "remover promo", "3"] and item.get("descuento"):
+            draft_prices = json.loads(json.dumps(current_lp))
+            draft_prices["items"][indices[0]].pop("descuento", None)
+            resumen = f"Se quitó la promoción de *{item.get('servicio', 'Servicio')}* (vuelve a precio regular)."
+            guardar_y_enviar_borrador_ajuste(wa_id, web_info, draft_prices, resumen, nombre)
+        elif texto_limpio in ["btn_prod_percent", "aumentar por %", "porcentaje", "3"]:
+            set_user_state(wa_id, WAITING_FOR_ADJUST_TYPE_ALL, temp_data)
+            msg = (f"📈 *Ajustar por Porcentaje*\n\n"
+                   f"Producto: *{item.get('servicio', 'Servicio')}*\n\n"
+                   f"¿Deseás aumentar o rebajar el precio de este producto?")
+            buttons = [
+                {"id": "btn_adj_all_inc", "title": "📈 Aumentar Precios"},
+                {"id": "btn_adj_all_dec", "title": "📉 Bajar Precios"},
+                {"id": "btn_menu", "title": "📱 Volver al Menú"}
+            ]
+            send_whatsapp_buttons(wa_id, msg, buttons)
+        else:
+            has_promo = bool(item.get("descuento"))
+            buttons = [
+                {"id": "btn_prod_exact", "title": "💰 Precio Exacto"},
+                {"id": "btn_prod_promo", "title": "🏷️ Poner en Promo"}
+            ]
+            if has_promo:
+                buttons.append({"id": "btn_prod_remove_promo", "title": "⏹️ Quitar Promo"})
+            else:
+                buttons.append({"id": "btn_prod_percent", "title": "📈 Aumentar por %"})
+            send_whatsapp_buttons(wa_id, "Por favor seleccioná una de las opciones disponibles:", buttons)
+
+    elif estado_actual == WAITING_FOR_EXACT_PRICE_VALUE:
+        num = extract_numeric_price(texto)
+        if num <= 0:
+            send_whatsapp_buttons(wa_id, "⚠️ Por favor ingresá un monto válido mayor a 0 (ejemplo: 18000 o $18.000):", btn_volver_menu)
+            return
+
+        fmt = format_price(num)
+        user_session = get_user_state(wa_id)
+        temp_data = user_session.get("temp_data", {})
+        indices = temp_data.get("indices", [0])
+
+        web_info = obtener_web_del_cliente(wa_id)
+        if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
+            send_whatsapp_message(wa_id, "⚠️ No se encontró la lista de precios.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return
+
+        current_lp = web_info["content"]["lista_precios"]
+        draft_prices = json.loads(json.dumps(current_lp))
+        item = draft_prices["items"][indices[0]]
+        precios = item.get("precios", {})
+
+        if "efectivo" in precios:
+            old_efectivo = extract_numeric_price(precios["efectivo"])
+            precios["efectivo"] = fmt
+            if old_efectivo > 0 and len(precios) > 1:
+                ratio = num / old_efectivo
+                for col in precios:
+                    if col != "efectivo":
+                        old_col = extract_numeric_price(precios[col])
+                        if old_col > 0:
+                            precios[col] = format_price(round_clean_price(old_col * ratio))
+        else:
+            for col in precios:
+                precios[col] = fmt
+
+        resumen = f"Nuevo precio para *{item.get('servicio', 'Servicio')}*: {fmt}."
+        guardar_y_enviar_borrador_ajuste(wa_id, web_info, draft_prices, resumen, nombre)
+
+    elif estado_actual == WAITING_FOR_PROD_PROMO_PERCENT:
+        clean_num = re.sub(r'[^\d]', '', texto)
+        if not clean_num or not (1 <= int(clean_num) <= 99):
+            send_whatsapp_buttons(wa_id, "⚠️ Por favor ingresá un porcentaje de descuento válido entre 1 y 99 (por ejemplo: 20 para 20% OFF):", btn_volver_menu)
+            return
+
+        pct = int(clean_num)
+        user_session = get_user_state(wa_id)
+        temp_data = user_session.get("temp_data", {})
+        indices = temp_data.get("indices", [])
+
+        web_info = obtener_web_del_cliente(wa_id)
+        if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
+            send_whatsapp_message(wa_id, "⚠️ No se encontró la lista de precios.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return
+
+        current_lp = web_info["content"]["lista_precios"]
+        draft_prices = json.loads(json.dumps(current_lp))
+
+        nom_items = []
+        for i in indices:
+            if i < len(draft_prices.get("items", [])):
+                draft_prices["items"][i]["descuento"] = pct
+                nom_items.append(draft_prices["items"][i].get("servicio", f"Producto {i+1}"))
+
+        if len(nom_items) == 1:
+            resumen = f"Promoción de *{pct}% OFF* asignada a *{nom_items[0]}*."
+        else:
+            resumen = f"Promoción de *{pct}% OFF* asignada a {len(nom_items)} productos."
+
+        guardar_y_enviar_borrador_ajuste(wa_id, web_info, draft_prices, resumen, nombre)
+
+    elif estado_actual == WAITING_FOR_MULTI_PRODUCT_ACTION:
+        user_session = get_user_state(wa_id)
+        temp_data = user_session.get("temp_data", {})
+        indices = temp_data.get("indices", [])
+
+        web_info = obtener_web_del_cliente(wa_id)
+        if not web_info or not web_info.get("content") or not web_info["content"].get("lista_precios"):
+            send_whatsapp_message(wa_id, "⚠️ No se encontró la lista de precios.")
+            set_user_state(wa_id, MAIN_MENU, {})
+            return
+
+        current_lp = web_info["content"]["lista_precios"]
+
+        if texto_limpio in ["btn_multi_promo", "poner en promo", "promo", "1"]:
+            set_user_state(wa_id, WAITING_FOR_PROD_PROMO_PERCENT, temp_data)
+            msg = (f"🏷️ *Poner en Promoción*\n\n"
+                   f"Se aplicará a los {len(indices)} productos seleccionados.\n\n"
+                   f"¿Qué porcentaje de descuento querés asignarles?\n"
+                   f"*(Solo escribí el número, ej: 15 o 20 para 20% OFF):*\n\n"
+                   f"💡 _(Escribí volver para cancelar)_")
+            send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+        elif texto_limpio in ["btn_multi_percent", "ajustar por %", "porcentaje", "2"]:
+            set_user_state(wa_id, WAITING_FOR_ADJUST_TYPE_ALL, temp_data)
+            msg = (f"📈 *Ajustar por Porcentaje*\n\n"
+                   f"¿Deseás aumentar o rebajar el precio de los {len(indices)} productos seleccionados?")
+            buttons = [
+                {"id": "btn_adj_all_inc", "title": "📈 Aumentar Precios"},
+                {"id": "btn_adj_all_dec", "title": "📉 Bajar Precios"},
+                {"id": "btn_menu", "title": "📱 Volver al Menú"}
+            ]
+            send_whatsapp_buttons(wa_id, msg, buttons)
+        elif texto_limpio in ["btn_multi_remove_promo", "quitar promos", "remover promos", "3"]:
+            draft_prices = json.loads(json.dumps(current_lp))
+            for i in indices:
+                if i < len(draft_prices.get("items", [])):
+                    draft_prices["items"][i].pop("descuento", None)
+            resumen = f"Se quitaron las promociones de los {len(indices)} productos seleccionados."
+            guardar_y_enviar_borrador_ajuste(wa_id, web_info, draft_prices, resumen, nombre)
+        else:
+            has_any_promo = any(current_lp["items"][i].get("descuento") for i in indices if i < len(current_lp.get("items", [])))
+            buttons = [
+                {"id": "btn_multi_promo", "title": "🏷️ Poner en Promo"},
+                {"id": "btn_multi_percent", "title": "📈 Ajustar por %"}
+            ]
+            if has_any_promo:
+                buttons.append({"id": "btn_multi_remove_promo", "title": "⏹️ Quitar Promos"})
+            else:
+                buttons.append({"id": "btn_menu", "title": "📱 Volver al Menú"})
+            send_whatsapp_buttons(wa_id, "Por favor seleccioná una de las opciones disponibles:", buttons)
+
+    elif estado_actual == CONFIRM_PRICE_ADJUST_DRAFT:
+        if texto_limpio in ["btn_adj_confirm", "publicar", "confirmar", "si", "sí", "aplicar", "1", "ok"]:
+            user_session = get_user_state(wa_id)
+            temp_data = user_session.get("temp_data", {})
+            draft_prices = temp_data.get("draft_prices")
+
+            web_info = obtener_web_del_cliente(wa_id)
+            if web_info and draft_prices:
+                content = web_info["content"]
+                content["lista_precios"] = draft_prices
+                if actualizar_web_content(web_info["version_id"], content):
+                    clear_user_state(wa_id)
+                    slug = web_info.get("slug", "mi-web")
+                    public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
+                    msg = (f"🎉 ¡Tus nuevos precios y promociones fueron publicados con éxito en tu web!\n\n"
+                           f"Tus clientes ya pueden ver los valores actualizados.\n\n"
+                           f"🔗 {public_url}\n\n"
+                           f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
+                    buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
+                    send_whatsapp_buttons(wa_id, msg, buttons)
+                else:
+                    send_whatsapp_message(wa_id, "❌ Hubo un error al guardar los precios en la base de datos.")
+            else:
+                send_whatsapp_message(wa_id, "⚠️ No se encontró el borrador de precios o los datos de tu web. Por favor reintentá.")
+                clear_user_state(wa_id)
+        elif texto_limpio in ["btn_adj_cancel", "cancelar", "descartar", "no", "2"]:
+            clear_user_state(wa_id)
+            send_whatsapp_message(wa_id, "❌ Cambios cancelados. El borrador fue descartado y tus precios no sufrieron modificaciones.")
+            procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
+        else:
+            buttons = [
+                {"id": "btn_adj_confirm", "title": "✅ Publicar Precios"},
+                {"id": "btn_adj_cancel", "title": "❌ Cancelar"}
+            ]
+            send_whatsapp_buttons(wa_id, "Por favor respondé *Publicar* para confirmar los cambios o *Cancelar* para descartar el borrador.", buttons)
 
     else:
         # Fallback si estamos en IDLE
