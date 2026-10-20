@@ -290,13 +290,15 @@
                     <tr class="price-table-row hover:bg-slate-50/70 transition-colors"
                         data-service="{{ item.servicio }}"
                         data-prices='{{ item.precios | tojson }}'
-                        data-regular-prices='{{ item.precios | tojson }}'>
+                        data-regular-prices='{{ item.precios | tojson }}'
+                        data-item-discount="{{ item.descuento or 0 }}">
                         <td class="py-5 px-4 text-center">
                             <input type="checkbox"
                                    class="price-item-checkbox w-5 h-5 accent-primary rounded cursor-pointer transition-transform hover:scale-110"
                                    data-service="{{ item.servicio }}"
                                    data-prices='{{ item.precios | tojson }}'
                                    data-regular-prices='{{ item.precios | tojson }}'
+                                   data-item-discount="{{ item.descuento or 0 }}"
                                    aria-label="Seleccionar {{ item.servicio }}">
                         </td>
                         <td class="py-5 px-6 font-bold text-slate-900 text-base">
@@ -335,6 +337,7 @@
                                data-service="{{ item.servicio }}"
                                data-prices='{{ item.precios | tojson }}'
                                data-regular-prices='{{ item.precios | tojson }}'
+                               data-item-discount="{{ item.descuento or 0 }}"
                                title="Pedir Turno">
                                 <i class="fab fa-whatsapp text-base"></i>
                                 <span>Pedir Turno</span>
@@ -372,13 +375,15 @@
                 <div class="price-item-card bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-3 hover:border-slate-200 transition"
                      data-service="{{ item.servicio }}"
                      data-prices='{{ item.precios | tojson }}'
-                     data-regular-prices='{{ item.precios | tojson }}'>
+                     data-regular-prices='{{ item.precios | tojson }}'
+                     data-item-discount="{{ item.descuento or 0 }}">
                     <div class="flex items-center gap-3 min-w-0 flex-1">
                         <input type="checkbox"
                                class="price-item-checkbox-mobile w-5 h-5 accent-primary rounded cursor-pointer shrink-0"
                                data-service="{{ item.servicio }}"
                                data-prices='{{ item.precios | tojson }}'
                                data-regular-prices='{{ item.precios | tojson }}'
+                               data-item-discount="{{ item.descuento or 0 }}"
                                aria-label="Seleccionar {{ item.servicio }}">
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-1.5 flex-wrap">
@@ -420,7 +425,8 @@
                        aria-label="Pedir Turno para {{ item.servicio }}"
                        data-service="{{ item.servicio }}"
                        data-prices='{{ item.precios | tojson }}'
-                       data-regular-prices='{{ item.precios | tojson }}'>
+                       data-regular-prices='{{ item.precios | tojson }}'
+                       data-item-discount="{{ item.descuento or 0 }}">
                         <i class="fab fa-whatsapp text-base"></i>
                         <span class="whitespace-nowrap">Pedir Turno</span>
                     </a>
@@ -672,12 +678,14 @@
             const tabPills = document.querySelectorAll('.price-tab-pill');
             let currentMobileCol = columnasPago && columnasPago.length > 0 ? columnasPago[0] : 'Efectivo';
             let currentEffectiveDiscount = 0;
+            let currentZoneDiscount = 0;
             const selectedServices = new Map();
 
             function updateMobileCardPrice(card, colName) {
                 const priceValEl = card.querySelector('.price-value');
                 if (!priceValEl) return;
                 const sName = card.getAttribute('data-service') || '';
+                const itemDiscount = parseInt(card.getAttribute('data-item-discount'), 10) || 0;
                 let regPrices = {};
                 try {
                     regPrices = JSON.parse(card.getAttribute('data-regular-prices') || card.getAttribute('data-prices') || '{}');
@@ -685,31 +693,61 @@
                 const isSelected = selectedServices && selectedServices.has(sName);
                 const regVal = getPriceForCol(regPrices, colName);
 
-                if (isSelected && currentEffectiveDiscount > 0 && regVal && regVal !== '-') {
-                    const discPrices = getDiscountedPricesObject(regPrices, currentEffectiveDiscount);
+                // Calcular descuento efectivo para este ítem
+                let finalDisc = 0;
+                if (isSelected) {
+                    if (promoZonasData && promoZonasData.acumulable === true && currentZoneDiscount > 0) {
+                        finalDisc = Math.max(itemDiscount, activeDiscount) + currentZoneDiscount;
+                    } else if (currentEffectiveDiscount > 0) {
+                        finalDisc = Math.max(itemDiscount, currentEffectiveDiscount);
+                    } else if (activeDiscount > 0) {
+                        finalDisc = Math.max(itemDiscount, activeDiscount);
+                    } else {
+                        finalDisc = itemDiscount;
+                    }
+                } else {
+                    finalDisc = Math.max(itemDiscount, activeDiscount);
+                }
+
+                if (finalDisc > 0 && regVal && regVal !== '-') {
+                    const discPrices = getDiscountedPricesObject(regPrices, finalDisc);
                     const discVal = getPriceForCol(discPrices, colName);
+                    const discPricesJson = JSON.stringify(discPrices);
+                    card.setAttribute('data-prices', discPricesJson);
+                    card.setAttribute('data-discounted-prices', discPricesJson);
+                    const cb = card.querySelector('.price-item-checkbox-mobile');
+                    if (cb) cb.setAttribute('data-prices', discPricesJson);
+                    priceValEl.setAttribute('data-prices', discPricesJson);
+                    const waBtn = card.querySelector('.mobile-wa-btn');
+                    if (waBtn) {
+                        waBtn.setAttribute('data-prices', discPricesJson);
+                        const msg = buildAllPricesMsg(sName, discPrices);
+                        waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+                    }
+
                     priceValEl.innerHTML = `
                         <div class="flex flex-col">
                             <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
                             <div class="flex items-center gap-1.5 mt-0.5">
                                 <span class="font-extrabold text-xl text-emerald-600 tracking-tight">${discVal}</span>
-                                <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">-${currentEffectiveDiscount}% OFF</span>
-                            </div>
-                        </div>
-                    `;
-                } else if ((!isSelected || currentEffectiveDiscount === 0) && activeDiscount > 0 && regVal && regVal !== '-') {
-                    const discPrices = getDiscountedPricesObject(regPrices, activeDiscount);
-                    const discVal = getPriceForCol(discPrices, colName);
-                    priceValEl.innerHTML = `
-                        <div class="flex flex-col">
-                            <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
-                            <div class="flex items-center gap-1.5 mt-0.5">
-                                <span class="font-extrabold text-xl text-emerald-600 tracking-tight">${discVal}</span>
-                                <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">${activeDiscount}% OFF</span>
+                                <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">-${finalDisc}% OFF</span>
                             </div>
                         </div>
                     `;
                 } else {
+                    const regPricesJson = JSON.stringify(regPrices);
+                    card.setAttribute('data-prices', regPricesJson);
+                    card.removeAttribute('data-discounted-prices');
+                    const cb = card.querySelector('.price-item-checkbox-mobile');
+                    if (cb) cb.setAttribute('data-prices', regPricesJson);
+                    priceValEl.setAttribute('data-prices', regPricesJson);
+                    const waBtn = card.querySelector('.mobile-wa-btn');
+                    if (waBtn) {
+                        waBtn.setAttribute('data-prices', regPricesJson);
+                        const msg = buildAllPricesMsg(sName, regPrices);
+                        waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+                    }
+
                     priceValEl.textContent = regVal || '-';
                 }
             }
@@ -720,6 +758,7 @@
                 // 1. Desktop: actualizar celdas de la tabla
                 document.querySelectorAll('.price-table-row').forEach(row => {
                     const sName = row.getAttribute('data-service') || '';
+                    const itemDiscount = parseInt(row.getAttribute('data-item-discount'), 10) || 0;
                     let regPrices = {};
                     try {
                         regPrices = JSON.parse(row.getAttribute('data-regular-prices') || row.getAttribute('data-prices') || '{}');
@@ -727,8 +766,40 @@
 
                     const isSelected = selectedServices.has(sName);
 
-                    if (isSelected && effectiveDiscount > 0) {
-                        const discPrices = getDiscountedPricesObject(regPrices, effectiveDiscount);
+                    // Calcular descuento efectivo individual
+                    let finalDisc = 0;
+                    if (isSelected) {
+                        if (promoZonasData && promoZonasData.acumulable === true && currentZoneDiscount > 0) {
+                            finalDisc = Math.max(itemDiscount, activeDiscount) + currentZoneDiscount;
+                        } else if (effectiveDiscount > 0) {
+                            finalDisc = Math.max(itemDiscount, effectiveDiscount);
+                        } else if (activeDiscount > 0) {
+                            finalDisc = Math.max(itemDiscount, activeDiscount);
+                        } else {
+                            finalDisc = itemDiscount;
+                        }
+                    } else {
+                        finalDisc = Math.max(itemDiscount, activeDiscount);
+                    }
+
+                    if (finalDisc > 0) {
+                        const discPrices = getDiscountedPricesObject(regPrices, finalDisc);
+                        const discPricesJson = JSON.stringify(discPrices);
+                        row.setAttribute('data-prices', discPricesJson);
+                        const cb = row.querySelector('.price-item-checkbox');
+                        if (cb) cb.setAttribute('data-prices', discPricesJson);
+                        const waBtn = row.querySelector('.desktop-wa-btn');
+                        if (waBtn) {
+                            waBtn.setAttribute('data-prices', discPricesJson);
+                            const msg = buildAllPricesMsg(sName, discPrices);
+                            waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+                        }
+
+                        // Sincronización reactiva del badge: -${effectiveDiscount}% OFF o -${finalDisc}% OFF
+                        const badgeText = (isSelected && effectiveDiscount > 0 && finalDisc === effectiveDiscount)
+                            ? `-${effectiveDiscount}% OFF`
+                            : `-${finalDisc}% OFF`;
+
                         row.querySelectorAll('.desktop-price-cell').forEach(cell => {
                             const col = cell.getAttribute('data-col') || '';
                             const regVal = getPriceForCol(regPrices, col);
@@ -739,27 +810,7 @@
                                         <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
                                         <div class="flex items-center gap-1.5 mt-0.5">
                                             <span class="font-extrabold text-emerald-600 text-sm md:text-base">${discVal}</span>
-                                            <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">-${effectiveDiscount}% OFF</span>
-                                        </div>
-                                    </div>
-                                `;
-                            } else {
-                                cell.textContent = '-';
-                            }
-                        });
-                    } else if (!isSelected && activeDiscount > 0) {
-                        const baseDiscPrices = getDiscountedPricesObject(regPrices, activeDiscount);
-                        row.querySelectorAll('.desktop-price-cell').forEach(cell => {
-                            const col = cell.getAttribute('data-col') || '';
-                            const regVal = getPriceForCol(regPrices, col);
-                            const discVal = getPriceForCol(baseDiscPrices, col);
-                            if (regVal && regVal !== '-') {
-                                cell.innerHTML = `
-                                    <div class="flex flex-col items-center justify-center">
-                                        <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
-                                        <div class="flex items-center gap-1.5 mt-0.5">
-                                            <span class="font-extrabold text-emerald-600 text-sm md:text-base">${discVal}</span>
-                                            <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">${activeDiscount}% OFF</span>
+                                            <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">${badgeText}</span>
                                         </div>
                                     </div>
                                 `;
@@ -769,6 +820,17 @@
                         });
                     } else {
                         // Sin descuento aplicable
+                        const regPricesJson = JSON.stringify(regPrices);
+                        row.setAttribute('data-prices', regPricesJson);
+                        const cb = row.querySelector('.price-item-checkbox');
+                        if (cb) cb.setAttribute('data-prices', regPricesJson);
+                        const waBtn = row.querySelector('.desktop-wa-btn');
+                        if (waBtn) {
+                            waBtn.setAttribute('data-prices', regPricesJson);
+                            const msg = buildAllPricesMsg(sName, regPrices);
+                            waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+                        }
+
                         row.querySelectorAll('.desktop-price-cell').forEach(cell => {
                             const col = cell.getAttribute('data-col') || '';
                             const regVal = getPriceForCol(regPrices, col);
@@ -784,71 +846,7 @@
             }
 
             function applyRealtimeDiscounts() {
-                if (!activeDiscount || activeDiscount <= 0) return;
-
-                // Desktop: celdas con precio tachado y badge
-                document.querySelectorAll('.price-table-row').forEach(row => {
-                    let regPrices = {};
-                    try {
-                        regPrices = JSON.parse(row.getAttribute('data-regular-prices') || row.getAttribute('data-prices') || '{}');
-                    } catch(e) {}
-                    const discPrices = getDiscountedPricesObject(regPrices, activeDiscount);
-                    const discPricesJson = JSON.stringify(discPrices);
-
-                    row.setAttribute('data-prices', discPricesJson);
-                    const cb = row.querySelector('.price-item-checkbox');
-                    if (cb) cb.setAttribute('data-prices', discPricesJson);
-                    const waBtn = row.querySelector('.desktop-wa-btn');
-                    if (waBtn) {
-                        waBtn.setAttribute('data-prices', discPricesJson);
-                        const sName = waBtn.getAttribute('data-service') || '';
-                        const msg = buildAllPricesMsg(sName, discPrices);
-                        waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-                    }
-
-                    row.querySelectorAll('.desktop-price-cell').forEach(cell => {
-                        const col = cell.getAttribute('data-col') || '';
-                        const regVal = getPriceForCol(regPrices, col);
-                        const discVal = getPriceForCol(discPrices, col);
-                        if (regVal && regVal !== '-') {
-                            cell.innerHTML = `
-                                <div class="flex flex-col items-center justify-center">
-                                    <span class="text-xs text-slate-400 line-through font-normal">${regVal}</span>
-                                    <div class="flex items-center gap-1.5 mt-0.5">
-                                        <span class="font-extrabold text-emerald-600 text-sm md:text-base">${discVal}</span>
-                                        <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">${activeDiscount}% OFF</span>
-                                    </div>
-                                </div>
-                            `;
-                        }
-                    });
-                });
-
-                // Mobile: tarjetas con precio tachado y badge
-                document.querySelectorAll('.price-item-card').forEach(card => {
-                    let regPrices = {};
-                    try {
-                        regPrices = JSON.parse(card.getAttribute('data-regular-prices') || card.getAttribute('data-prices') || '{}');
-                    } catch(e) {}
-                    const discPrices = getDiscountedPricesObject(regPrices, activeDiscount);
-                    const discPricesJson = JSON.stringify(discPrices);
-
-                    card.setAttribute('data-prices', discPricesJson);
-                    card.setAttribute('data-discounted-prices', discPricesJson);
-                    const cb = card.querySelector('.price-item-checkbox-mobile');
-                    if (cb) cb.setAttribute('data-prices', discPricesJson);
-                    const priceValEl = card.querySelector('.price-value');
-                    if (priceValEl) priceValEl.setAttribute('data-prices', discPricesJson);
-                    const waBtn = card.querySelector('.mobile-wa-btn');
-                    if (waBtn) {
-                        waBtn.setAttribute('data-prices', discPricesJson);
-                        const sName = waBtn.getAttribute('data-service') || '';
-                        const msg = buildAllPricesMsg(sName, discPrices);
-                        waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-                    }
-
-                    updateMobileCardPrice(card, currentMobileCol);
-                });
+                updateRowsAndCardsPrices(0);
             }
 
             // Aplicar descuentos en tiempo real
@@ -899,6 +897,7 @@
                         pill.classList.remove('bg-emerald-500/15', 'border-emerald-500/40', 'ring-1', 'ring-emerald-400/30');
                     });
                     currentEffectiveDiscount = 0;
+                    currentZoneDiscount = 0;
                     updateRowsAndCardsPrices(0);
                     return;
                 }
@@ -918,6 +917,7 @@
                         }
                     }
                 }
+                currentZoneDiscount = zoneDiscount;
 
                 // Resaltar visualmente la píldora de escala de combo alcanzada
                 document.querySelectorAll('.promo-zone-pill').forEach(pill => {
@@ -956,6 +956,27 @@
                     discountExplanation = '';
                 }
 
+                // Actualizar precios de cada ítem seleccionado en selectedServices según su descuento individual y combos
+                selectedServices.forEach(item => {
+                    const itemDiscount = item.itemDiscount || 0;
+                    let itemDisc = 0;
+                    if (promoZonasData && promoZonasData.acumulable === true && zoneDiscount > 0) {
+                        itemDisc = Math.max(itemDiscount, activeDiscount) + zoneDiscount;
+                    } else if (effectiveDiscount > 0) {
+                        itemDisc = Math.max(itemDiscount, effectiveDiscount);
+                    } else if (activeDiscount > 0) {
+                        itemDisc = Math.max(itemDiscount, activeDiscount);
+                    } else {
+                        itemDisc = itemDiscount;
+                    }
+
+                    if (itemDisc > 0) {
+                        item.prices = getDiscountedPricesObject(item.regularPrices, itemDisc);
+                    } else {
+                        item.prices = item.regularPrices;
+                    }
+                });
+
                 // Actualizar precios reactivos en filas desktop y tarjetas mobile
                 currentEffectiveDiscount = effectiveDiscount;
                 updateRowsAndCardsPrices(effectiveDiscount);
@@ -980,15 +1001,28 @@
                 });
 
                 const finalTotalsByCol = {};
+                const anyItemDiscount = Array.from(selectedServices.values()).some(it => (it.itemDiscount || 0) > 0);
                 if (columnasPago && columnasPago.length > 0) {
-                    columnasPago.forEach(col => {
-                        const bruto = grossTotalsByCol[col] || 0;
-                        if (effectiveDiscount > 0) {
-                            finalTotalsByCol[col] = Math.round(bruto * (1 - (effectiveDiscount / 100)));
-                        } else {
-                            finalTotalsByCol[col] = bruto;
-                        }
-                    });
+                    if (anyItemDiscount) {
+                        columnasPago.forEach(col => {
+                            let totalCol = 0;
+                            selectedServices.forEach(item => {
+                                const p = item.prices || {};
+                                let valStr = getPriceForCol(p, col);
+                                totalCol += parsePriceValue(valStr);
+                            });
+                            finalTotalsByCol[col] = totalCol;
+                        });
+                    } else {
+                        columnasPago.forEach(col => {
+                            const bruto = grossTotalsByCol[col] || 0;
+                            if (effectiveDiscount > 0) {
+                                finalTotalsByCol[col] = Math.round(bruto * (1 - (effectiveDiscount / 100)));
+                            } else {
+                                finalTotalsByCol[col] = bruto;
+                            }
+                        });
+                    }
                 }
 
                 // Modalidad principal a destacar en la barra
@@ -1080,12 +1114,13 @@
                 }
             }
 
-            function setServiceSelected(serviceName, prices, isSelected, regularPrices) {
+            function setServiceSelected(serviceName, prices, isSelected, regularPrices, itemDiscount) {
                 if (isSelected) {
                     selectedServices.set(serviceName, {
                         service: serviceName,
                         prices: prices,
-                        regularPrices: regularPrices || prices
+                        regularPrices: regularPrices || prices,
+                        itemDiscount: parseInt(itemDiscount, 10) || 0
                     });
                 } else {
                     selectedServices.delete(serviceName);
@@ -1119,13 +1154,14 @@
             document.querySelectorAll('.price-item-checkbox').forEach(cb => {
                 cb.addEventListener('change', function() {
                     const sName = this.getAttribute('data-service') || '';
+                    const itemDiscount = parseInt(this.getAttribute('data-item-discount'), 10) || 0;
                     let pData = {};
                     let regPData = {};
                     try {
                         pData = JSON.parse(this.getAttribute('data-prices') || '{}');
                         regPData = JSON.parse(this.getAttribute('data-regular-prices') || '{}');
                     } catch(err) {}
-                    setServiceSelected(sName, pData, this.checked, regPData);
+                    setServiceSelected(sName, pData, this.checked, regPData, itemDiscount);
                 });
             });
 
@@ -1133,13 +1169,14 @@
             document.querySelectorAll('.price-item-checkbox-mobile').forEach(cb => {
                 cb.addEventListener('change', function() {
                     const sName = this.getAttribute('data-service') || '';
+                    const itemDiscount = parseInt(this.getAttribute('data-item-discount'), 10) || 0;
                     let pData = {};
                     let regPData = {};
                     try {
                         pData = JSON.parse(this.getAttribute('data-prices') || '{}');
                         regPData = JSON.parse(this.getAttribute('data-regular-prices') || '{}');
                     } catch(err) {}
-                    setServiceSelected(sName, pData, this.checked, regPData);
+                    setServiceSelected(sName, pData, this.checked, regPData, itemDiscount);
                 });
             });
 
@@ -1195,6 +1232,7 @@
                     e.preventDefault();
                     e.stopPropagation();
                     const serviceName = this.getAttribute('data-service') || '';
+                    const itemDiscount = parseInt(this.getAttribute('data-item-discount'), 10) || 0;
                     let prices = {};
                     let regPrices = {};
                     try {
@@ -1204,7 +1242,7 @@
 
                     // Si esta fila no estaba seleccionada, agregarla al carrito
                     if (!selectedServices.has(serviceName)) {
-                        setServiceSelected(serviceName, prices, true, regPrices);
+                        setServiceSelected(serviceName, prices, true, regPrices, itemDiscount);
                     }
 
                     // Abrir directamente la URL de WhatsApp con el presupuesto consolidado completo

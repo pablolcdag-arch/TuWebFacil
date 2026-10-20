@@ -342,3 +342,18 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   3. Cero regresiones en `test_price_list_frontend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
 - **Razón:** Permitir a los comerciantes gestionar la inflación (aumentos masivos o individuales) y armar promociones selectivas por producto directamente desde WhatsApp con máxima ergonomía móvil (sin signos `+`, `-` ni `%`), evitando que tengan que rehacer sus planillas Excel.
 - **Impacto:** Herramienta comercial y operativa indispensable para comerciantes en Argentina, reduciendo la fricción de actualización de precios a segundos.
+
+## [20/10/2026] — Implementación del Renderizado Visual de Promociones por Producto en la Web de Clientes (Fase 2: Frontend)
+- **Decisión:**
+  1. En `templates/client_template.html`, se implementó la inyección tolerante a nulos de atributos de datos `data-item-discount="{{ item.descuento or 0 }}"` en:
+     - Tabla desktop: filas (`.price-table-row`), checkboxes (`.price-item-checkbox`) y botones individuales de WhatsApp (`.desktop-wa-btn`).
+     - Tarjetas mobile: contenedor (`.price-item-card`), checkboxes móviles (`.price-item-checkbox-mobile`) y botones de WhatsApp (`.mobile-wa-btn`).
+  2. En JavaScript vanilla de `client_template.html`:
+     - **Renderizado Dinámico y Conmutación de Pestañas Mobile:** `updateMobileCardPrice(card, colName)` calcula en tiempo real el descuento efectivo `finalDisc` considerando si el ítem está seleccionado, si aplica combo de zonas acumulable o mayor beneficio contra `activeDiscount`, inyectando el precio regular tachado (`line-through text-gray-400 font-normal mr-1.5`), el precio promocional en verde (`font-bold text-emerald-600`) y el badge `-${finalDisc}% OFF` (`bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-xs font-semibold`). Al conmutar pestañas de pago (Efectivo, Transferencia, Tarjeta), el cálculo y layout se actualizan reactivamente sin saltos.
+     - **Tabla Desktop:** `updateRowsAndCardsPrices(effectiveDiscount)` actualiza celdas desktop con precios tachados, precios destacados y badges de descuento individual cuando corresponda.
+     - **Carrito Flotante (#price-multi-bar):** `updateStickyBar()` evalúa los descuentos individuales por producto para sumar con exactitud los totales finales por columna de pago (`finalTotalsByCol`) aun cuando no exista ninguna promoción global activa (`effectiveDiscount === 0`).
+     - **Inicialización:** `applyRealtimeDiscounts()` ejecuta el renderizado visual inicial de productos con descuento al cargar la página.
+  3. En `scripts/utils/test_price_list_frontend.py`, se incorporó el bloque `[TEST 9]` validando atributos Jinja, renderizado condicional de precios tachados, badges `OFF`, reactividad móvil, cálculo de carrito con descuentos individuales y retrocompatibilidad con ítems sin descuento (100% PASS).
+  4. Cero regresiones en `test_price_list_backend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
+- **Razón:** Reflejar inmediatamente en la experiencia web del cliente final las promociones configuradas por el comerciante desde WhatsApp, asegurando un diseño atractivo, consistente y con total claridad en los precios tachados y bonificados tanto en celulares como en computadoras.
+- **Impacto:** Conversión incrementada en webs de clientes gracias a ofertas y descuentos visuales transparentes y calculados al centavo en el carrito y pedidos de WhatsApp.

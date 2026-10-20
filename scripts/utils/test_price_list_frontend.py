@@ -484,8 +484,74 @@ def run_tests():
     assert 'id="promo-zonas-container"' not in html_inactive_zonas, "No debe renderizar #promo-zonas-container si activa=False"
     print("  ✅ Banner de Combo de Zonas, píldoras, badges de acumulación, lógica de cálculo y actualización reactiva de filas/tarjetas en JS verificados al 100%.")
 
+    # -------------------------------------------------------------------------
+    # TEST 9: Promociones por Producto Individual (Fase 2)
+    # -------------------------------------------------------------------------
+    print("\n[TEST 9] Verificando Promociones por Producto Individual (Fase 2)...")
+
+    ctx_item_promo = build_base_context()
+    prices_item_promo = build_sample_price_list()
+    # Asignar descuento del 20% al primer item
+    prices_item_promo["items"][0]["descuento"] = 20
+    # Asegurar que el segundo item no tenga descuento configurado
+    if len(prices_item_promo["items"]) > 1:
+        prices_item_promo["items"][1].pop("descuento", None)
+
+    ctx_item_promo["web_content"]["lista_precios"] = prices_item_promo
+    html_item_promo = template.render(**ctx_item_promo)
+
+    # 1. Verificación de atributos data-item-discount en el primer producto
+    assert 'data-item-discount="20"' in html_item_promo, \
+        "Debe existir data-item-discount='20' en el producto con descuento individual"
+
+    # 2. Verificación de data-item-discount='0' en productos sin descuento
+    assert 'data-item-discount="0"' in html_item_promo, \
+        "Debe existir data-item-discount='0' en productos sin descuento configurado"
+
+    # 3. Presencia en filas desktop, checkboxes y botones de WhatsApp
+    assert 'class="price-table-row' in html_item_promo and 'data-item-discount="20"' in html_item_promo, \
+        "La fila desktop debe contener data-item-discount"
+    assert 'class="price-item-checkbox' in html_item_promo and 'data-item-discount="20"' in html_item_promo, \
+        "El checkbox desktop debe contener data-item-discount"
+    assert 'desktop-wa-btn' in html_item_promo and 'data-item-discount="20"' in html_item_promo, \
+        "El botón desktop de WhatsApp debe contener data-item-discount"
+
+    # 4. Presencia en tarjetas mobile, checkboxes mobile y botones mobile
+    assert 'price-item-card' in html_item_promo and 'data-item-discount="20"' in html_item_promo, \
+        "La tarjeta mobile debe contener data-item-discount"
+    assert 'price-item-checkbox-mobile' in html_item_promo and 'data-item-discount="20"' in html_item_promo, \
+        "El checkbox mobile debe contener data-item-discount"
+    assert 'mobile-wa-btn' in html_item_promo and 'data-item-discount="20"' in html_item_promo, \
+        "El botón mobile de WhatsApp debe contener data-item-discount"
+
+    # 5. Verificación de lógica JavaScript para descuentos por producto
+    assert 'data-item-discount' in html_item_promo, \
+        "El script JS debe leer data-item-discount"
+    assert 'itemDiscount' in html_item_promo, \
+        "El script JS debe procesar la variable itemDiscount"
+    assert 'Math.max(itemDiscount' in html_item_promo, \
+        "El script JS debe aplicar la regla de mayor beneficio con Math.max(itemDiscount"
+    assert 'currentZoneDiscount' in html_item_promo, \
+        "El script JS debe manejar currentZoneDiscount para la acumulación"
+    assert 'anyItemDiscount' in html_item_promo, \
+        "El script JS debe considerar anyItemDiscount para el cálculo del carrito"
+
+    # 6. Retrocompatibilidad sin ítems con descuento
+    ctx_no_disc = build_base_context()
+    prices_no_disc = build_sample_price_list()
+    for it in prices_no_disc["items"]:
+        it.pop("descuento", None)
+    ctx_no_disc["web_content"]["lista_precios"] = prices_no_disc
+    html_no_disc = template.render(**ctx_no_disc)
+    assert 'data-item-discount="20"' not in html_no_disc, \
+        "No debe figurar data-item-discount='20' si ningún producto tiene descuento"
+    assert 'data-item-discount="0"' in html_no_disc, \
+        "Los productos deben tener data-item-discount='0' por defecto"
+
+    print("  ✅ Promociones por producto individual (Fase 2), atributos data, JS dinámico y retrocompatibilidad verificados al 100%.")
+
     print("\n" + "=" * 75)
-    print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1 PASARON CON ÉXITO (100% PASS)")
+    print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1 Y 2 PASARON CON ÉXITO (100% PASS)")
     print("=" * 75)
 
 
