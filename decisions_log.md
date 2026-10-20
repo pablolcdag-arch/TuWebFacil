@@ -313,3 +313,13 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   4. Cero regresiones en `test_price_list_backend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
 - **Razón:** Resolver problemas de maquetado en teléfonos móviles donde las palabras de los métodos de pago quedaban ocultas detrás de los botones de presupuesto y el carrito flotante se deformaba en una caja vertical desproporcionada.
 - **Impacto:** Experiencia de usuario (UX) móvil limpia, ergonómica y profesional tanto en pantallas angostas (360px - 390px) como en tablets y computadoras de escritorio.
+
+## [20/10/2026] — Exención del Límite de 3 Páginas Web para el Administrador (Prospección Outbound)
+- **Decisión:**
+  1. En `app.py`, se configuró la variable de entorno `ADMIN_PHONE = os.getenv("ADMIN_PHONE", "5491134710787")`.
+  2. En la ruta `POST /process_form`, se implementó la normalización telefónica defensiva comparando los últimos 10 dígitos del número remitente contra el teléfono del administrador (`is_admin_phone`).
+  3. Si la solicitud proviene del teléfono administrador, se omite el límite de 3 páginas web por número de teléfono, permitiendo crear páginas demo ilimitadas para prospección comercial directa hacia comercios y profesionales.
+  4. Los usuarios regulares y números no administrativos continúan sujetos a la regla de seguridad de máximo 3 páginas por teléfono.
+  5. Cero regresiones en `test_price_list_backend.py`, `test_price_list_frontend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
+- **Razón:** Habilitar la estrategia de prospección comercial outbound ("Demo Servida en Bandeja"), permitiendo al administrador armar demos personalizadas para comercios contactados por Google Maps o redes sin toparse con el bloqueo de cupo.
+- **Impacto:** Capacidad operativa de prospección a gran escala para captación de clientes de forma proactiva.

@@ -40,6 +40,7 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
 BOT_PHONE = os.getenv("BOT_PHONE_NUMBER", "PONER_AQUI_TU_NUMERO")
+ADMIN_PHONE = os.getenv("ADMIN_PHONE", "5491134710787")
 
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
@@ -399,17 +400,25 @@ def process_form():
         if not data:
             return jsonify({"success": False, "error": "No se recibieron datos"}), 400
 
-        # Verificar límite de 3 webs por número de teléfono
+        # Verificar límite de 3 webs por número de teléfono (eximiendo al administrador)
         if supabase and data.get("phone"):
-            phone = data["phone"]
-            # Buscar si el cliente existe
-            res_cli = supabase.table("clients").select("id").eq("phone", phone).execute()
-            if res_cli.data:
-                cli_id = res_cli.data[0]["id"]
-                # Contar webs del cliente
-                res_webs = supabase.table("websites").select("id", count="exact").eq("client_id", cli_id).execute()
-                if res_webs.count and res_webs.count >= 3:
-                    return jsonify({"success": False, "error": "Ya llegaste al máximo de 3 páginas permitidas por número de teléfono, manda un mensaje para solicitar más cupo."}), 400
+            phone = str(data["phone"]).strip()
+            clean_phone = re.sub(r'\D', '', phone)
+            clean_admin = re.sub(r'\D', '', ADMIN_PHONE)
+            is_admin_phone = (len(clean_phone) >= 10 and len(clean_admin) >= 10 and clean_phone[-10:] == clean_admin[-10:])
+            
+            if not is_admin_phone:
+                # Buscar si el cliente existe
+                res_cli = supabase.table("clients").select("id").eq("phone", phone).execute()
+                if res_cli.data:
+                    cli_id = res_cli.data[0]["id"]
+                    # Contar webs del cliente
+                    res_webs = supabase.table("websites").select("id", count="exact").eq("client_id", cli_id).execute()
+                    if res_webs.count and res_webs.count >= 3:
+                        return jsonify({
+                            "success": False, 
+                            "error": "Ya llegaste al máximo de 3 páginas permitidas por número de teléfono, manda un mensaje para solicitar más cupo."
+                        }), 400
 
         # Unificamos las preguntas en un bloque de contexto para la IA
         contexto_unificado = f"""
