@@ -19,6 +19,17 @@ supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
 supabase = create_client(supabase_url, supabase_key) if supabase_url and supabase_key else None
 
+ADMIN_PHONE = os.getenv("ADMIN_PHONE", "5491134710787")
+
+def is_admin_phone(phone: str) -> bool:
+    """Verifica si un número de teléfono corresponde al Administrador."""
+    if not phone:
+        return False
+    clean = re.sub(r'[^\d]', '', str(phone))
+    admin_clean = re.sub(r'[^\d]', '', str(ADMIN_PHONE))
+    return len(clean) >= 10 and len(admin_clean) >= 10 and clean[-10:] == admin_clean[-10:]
+
+
 # Diccionario en memoria como caché de sesiones de usuario.
 # Formato: { "numero_wa": {"estado": "MAIN_MENU", "temp_data": {}} }
 user_states = {}
@@ -207,16 +218,27 @@ def set_user_state(wa_id, estado, temp_data=None):
 def clear_user_state(wa_id):
     """
     Limpia la sesión del usuario tanto en memoria como en SQLite.
+    Preserva admin_active_web_id si el usuario es el Administrador.
     """
     clean_wa_id = str(wa_id).strip()
-    user_states[clean_wa_id] = {"estado": IDLE, "temp_data": {}}
+    current_temp = user_states.get(clean_wa_id, {}).get("temp_data", {})
+    admin_active_web_id = current_temp.get("admin_active_web_id") if is_admin_phone(clean_wa_id) else None
+
+    new_temp = {"admin_active_web_id": admin_active_web_id} if admin_active_web_id else {}
+    user_states[clean_wa_id] = {"estado": IDLE, "temp_data": new_temp}
 
     conn = None
     try:
         db_path = get_db_path()
         conn = sqlite3.connect(db_path, timeout=10)
         c = conn.cursor()
-        c.execute("DELETE FROM user_sessions WHERE phone = ?", (clean_wa_id,))
+        if admin_active_web_id:
+            c.execute("""
+                INSERT OR REPLACE INTO user_sessions (phone, estado, temp_data, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """, (clean_wa_id, IDLE, json.dumps(new_temp)))
+        else:
+            c.execute("DELETE FROM user_sessions WHERE phone = ?", (clean_wa_id,))
         conn.commit()
     except Exception as e:
         logging.error(f"Error al limpiar user_state para {clean_wa_id} en SQLite: {e}")
@@ -225,43 +247,191 @@ def clear_user_state(wa_id):
             conn.close()
 
 def obtener_web_del_cliente(phone):
-    """Busca la web actual del cliente en Supabase usando su teléfono."""
+    """Busca la web actual del cliente en Supabase usando su teléfono o el contexto activo del admin."""
     if not supabase:
         return None
     try:
-        # 1. Buscar al cliente
-        clean_phone = phone.replace("+", "")
+        # Caso A: Si es el Administrador y tiene una web activa fijada en sesión
+        if is_admin_phone(phone):
+            user_session = get_user_state(phone)
+            active_web_id = user_session.get("temp_data", {}).get("admin_active_web_id")
+            if not active_web_id and phone != ADMIN_PHONE:
+                user_session_alt = get_user_state(ADMIN_PHONE)
+                active_web_id = user_session_alt.get("temp_data", {}).get("admin_active_web_id")
+
+            if active_web_id:
+                web_res = supabase.table("websites").select("id, subdomain, custom_domain, client_id").eq("id", active_web_id).execute()
+                if web_res.data:
+                    w = web_res.data[0]
+                    website_id = w["id"]
+                    slug = w["subdomain"]
+                    custom_domain = w.get("custom_domain")
+                    client_id = w.get("client_id")
+
+                    client_name = "Cliente"
+                    client_phone = None
+                    if client_id:
+                        cli_res = supabase.table("clients").select("id, name, phone").eq("id", client_id).execute()
+                        if cli_res.data:
+                            client_name = cli_res.data[0].get("name", "Cliente")
+                            client_phone = cli_res.data[0].get("phone")
+
+                    ver_res = supabase.table("website_content").select("id, content").eq("website_id", website_id).execute()
+                    if ver_res.data:
+                        return {
+                            "id": website_id,
+                            "website_id": website_id,
+                            "version_id": ver_res.data[0]["id"],
+                            "content": json.loads(ver_res.data[0]["content"]) if isinstance(ver_res.data[0]["content"], str) else ver_res.data[0]["content"],
+                            "slug": slug,
+                            "custom_domain": custom_domain,
+                            "client_id": client_id,
+                            "client_name": client_name,
+                            "client_phone": client_phone
+                        }
+
+        # Caso B: Cliente regular (o admin sin web activa en sesión)
+        clean_phone = str(phone).replace("+", "").strip()
         base_phone = clean_phone[-10:] if len(clean_phone) >= 10 else clean_phone
-        cli_res = supabase.table("clients").select("id").ilike("phone", f"%{base_phone}").execute()
-        
+        cli_res = supabase.table("clients").select("id, name, phone").ilike("phone", f"%{base_phone}").execute()
+
         if not cli_res.data:
             return None
-        
-        client_id = cli_res.data[0]["id"]
-        
+
+        client_data = cli_res.data[0]
+        client_id = client_data["id"]
+        client_name = client_data.get("name", "Cliente")
+        client_phone = client_data.get("phone", phone)
+
         # 2. Buscar su web (asumimos la más reciente)
         web_res = supabase.table("websites").select("id, subdomain, custom_domain").eq("client_id", client_id).order("created_at", desc=True).limit(1).execute()
         if not web_res.data:
             return None
-            
+
         website_id = web_res.data[0]["id"]
         slug = web_res.data[0]["subdomain"]
         custom_domain = web_res.data[0].get("custom_domain")
-        
+
         # 3. Buscar la versión actual de la web
         ver_res = supabase.table("website_content").select("id, content").eq("website_id", website_id).execute()
-            
+
         if ver_res.data:
             return {
+                "id": website_id,
                 "website_id": website_id,
                 "version_id": ver_res.data[0]["id"],
                 "content": json.loads(ver_res.data[0]["content"]) if isinstance(ver_res.data[0]["content"], str) else ver_res.data[0]["content"],
                 "slug": slug,
-                "custom_domain": custom_domain
+                "custom_domain": custom_domain,
+                "client_id": client_id,
+                "client_name": client_name,
+                "client_phone": client_phone
             }
     except Exception as e:
         logging.error(f"Error al buscar web en BD: {e}")
     return None
+
+def notificar_cliente_cambio_publicado(wa_id_editor, web_info, descripcion_cambio):
+    """
+    Si el cambio fue realizado por el Super-Admin en una web ajena,
+    notifica automáticamente al titular del comercio con su link.
+    """
+    if not is_admin_phone(wa_id_editor):
+        return  # Si el cliente editó su propia web, no hace falta mandarle mensaje extra
+
+    if not web_info or not isinstance(web_info, dict):
+        return
+
+    client_phone = web_info.get("client_phone")
+    if not client_phone:
+        return
+
+    # Verificar que el teléfono del cliente no sea el mismo del admin
+    if is_admin_phone(client_phone):
+        return
+
+    try:
+        client_name = web_info.get("client_name", "Hola")
+        slug = web_info.get("slug", "tu-web")
+        custom_domain = web_info.get("custom_domain")
+        public_url = f"https://{custom_domain}" if custom_domain else f"https://{slug}.tuweblista.com.ar"
+
+        msg_cliente = (
+            f"¡Hola {client_name}! 👋\n\n"
+            f"Te avisamos que el cambio en tu página web (*{descripcion_cambio}*) ya fue realizado con éxito y se encuentra publicado. 🚀\n\n"
+            f"🔗 *Mirá cómo quedó acá:*\n{public_url}"
+        )
+        send_whatsapp_message(client_phone, msg_cliente)
+    except Exception as e:
+        logging.error(f"Error al notificar al cliente sobre cambio publicado: {e}")
+
+def fijar_web_activa_admin(wa_id, website_id, web_data=None):
+    """Fija la web activa en el contexto de sesión del Administrador y envía confirmación con botones rápidos."""
+    if not supabase:
+        send_whatsapp_message(wa_id, "⚠️ No hay conexión con la base de datos.")
+        return False
+    try:
+        if not web_data:
+            res = supabase.table("websites").select("id, subdomain, seo_title, custom_domain, client_id").eq("id", website_id).execute()
+            if not res.data:
+                send_whatsapp_message(wa_id, "⚠️ No se encontró la web solicitada.")
+                return False
+            web_data = res.data[0]
+
+        slug = web_data.get("subdomain", "sin-slug")
+        nombre_web = web_data.get("seo_title") or slug
+        client_id = web_data.get("client_id")
+
+        nombre_cliente = "Sin registrar"
+        telefono_cliente = "Sin registrar"
+        if client_id:
+            cli_res = supabase.table("clients").select("name, phone").eq("id", client_id).execute()
+            if cli_res.data:
+                nombre_cliente = cli_res.data[0].get("name", nombre_cliente)
+                telefono_cliente = cli_res.data[0].get("phone", telefono_cliente)
+
+        # Guardar en user_sessions.temp_data["admin_active_web_id"]
+        current_state = get_user_state(wa_id)
+        temp = current_state.get("temp_data", {})
+        temp["admin_active_web_id"] = str(website_id)
+        set_user_state(wa_id, IDLE, temp)
+
+        url = f"https://{web_data['custom_domain']}" if web_data.get("custom_domain") else f"https://{slug}.tuweblista.com.ar"
+
+        msg = (f"🔄 *Web Activa Seleccionada:*\n"
+               f"🏪 *Comercio:* {nombre_web} ({slug})\n"
+               f"👤 *Titular:* {nombre_cliente} ({telefono_cliente})\n"
+               f"🌐 {url}\n\n"
+               f"A partir de ahora, todas las fotos, precios, textos y configuraciones se aplicarán a este sitio.")
+
+        buttons = [
+            {"id": "main_precios", "title": "📋 Precios/Promos"},
+            {"id": "main_editar", "title": "🛠️ Textos/Fotos"},
+            {"id": "btn_menu", "title": "📱 Menú Completo"}
+        ]
+        send_whatsapp_buttons(wa_id, msg, buttons)
+        return True
+    except Exception as e:
+        logging.error(f"Error fijando web activa para admin: {e}")
+        send_whatsapp_message(wa_id, f"❌ Error al seleccionar web: {e}")
+        return False
+
+def mostrar_menu_edicion(wa_id):
+    """Muestra el submenú de edición de contenidos para el sitio activo."""
+    msg = "✏️ *Menú de Edición*\n¿Qué parte de tu página web querés modificar?\n\n💡 _Para volver al menú principal escribí *volver*_"
+    options = [
+        {"id": "EDIT_TITULO", "title": "📝 Editar Título"},
+        {"id": "EDIT_SUBTITULO", "title": "📝 Editar Subtítulo"},
+        {"id": "EDIT_SERVICIOS", "title": "💼 Editar Servicios"},
+        {"id": "EDIT_LOCATION", "title": "📍 Editar Ubicación"},
+        {"id": "EDIT_SCHEDULE", "title": "🕒 Editar Horarios"},
+        {"id": "EDIT_IMAGENES", "title": "🖼️ Editar Imágenes"},
+        {"id": "EDIT_WHATSAPP", "title": "💬 Editar WhatsApp"},
+        {"id": "EDIT_EMAIL", "title": "✉️ Editar Email"},
+        {"id": "EDIT_INSTAGRAM", "title": "📷 Editar Instagram"}
+    ]
+    send_whatsapp_list(wa_id, msg, "Elegir Sección", options, "Edición de Web")
+    set_user_state(wa_id, EDIT_MENU)
 
 def actualizar_web_content(version_id, new_content):
     if not supabase:
@@ -496,6 +666,7 @@ def detener_promocion_activa(wa_id, nombre):
     elif tiene_fecha:
         lp.pop("promocion_fecha", None)
         if actualizar_web_content(web_info["version_id"], content):
+            notificar_cliente_cambio_publicado(wa_id, web_info, "promoción por fecha finalizada")
             slug = web_info.get("slug", "mi-web")
             public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
             msg = (f"⏹️ ¡Listo! La promoción fue detenida y retirada de tu web.\n\n"
@@ -513,6 +684,7 @@ def detener_promocion_activa(wa_id, nombre):
     elif tiene_zonas:
         lp.pop("promocion_zonas", None)
         if actualizar_web_content(web_info["version_id"], content):
+            notificar_cliente_cambio_publicado(wa_id, web_info, "promoción por zonas finalizada")
             slug = web_info.get("slug", "mi-web")
             public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
             msg = (f"⏹️ ¡Listo! La promoción por zonas fue detenida y retirada de tu web.\n\n"
@@ -899,6 +1071,174 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         clear_user_state(wa_id)
         procesar_mensaje(wa_id, "quiero confirmar mi web", nombre)
         return
+
+    # 1.1 Comandos Super-Admin Multisitio (solo si el emisor es el Administrador)
+    if is_admin_phone(wa_id):
+        # a. web actual / info web
+        if texto_limpio in ["web actual", "info web", "web activa", "mi web actual"]:
+            user_session = get_user_state(wa_id)
+            active_web_id = user_session.get("temp_data", {}).get("admin_active_web_id")
+            if active_web_id and supabase:
+                try:
+                    web_res = supabase.table("websites").select("id, subdomain, seo_title, custom_domain, client_id").eq("id", active_web_id).execute()
+                    if web_res.data:
+                        w = web_res.data[0]
+                        slug = w.get("subdomain", "")
+                        title = w.get("seo_title") or slug
+                        c_name = "Sin titular"
+                        c_phone = "Sin teléfono"
+                        if w.get("client_id"):
+                            cli_res = supabase.table("clients").select("name, phone").eq("id", w["client_id"]).execute()
+                            if cli_res.data:
+                                c_name = cli_res.data[0].get("name", c_name)
+                                c_phone = cli_res.data[0].get("phone", c_phone)
+                        url = f"https://{w['custom_domain']}" if w.get("custom_domain") else f"https://{slug}.tuweblista.com.ar"
+                        msg = (f"🔄 *Web Activa Actualmente:*\n\n"
+                               f"🏪 *Comercio:* {title} ({slug})\n"
+                               f"👤 *Titular:* {c_name} ({c_phone})\n"
+                               f"🌐 {url}\n\n"
+                               f"Podés editarla con los botones de abajo o cambiar con *web <slug>* o *mis webs*.")
+                        buttons = [
+                            {"id": "main_precios", "title": "📋 Precios/Promos"},
+                            {"id": "main_editar", "title": "🛠️ Textos/Fotos"},
+                            {"id": "btn_menu", "title": "📱 Menú Completo"}
+                        ]
+                        send_whatsapp_buttons(wa_id, msg, buttons)
+                        return
+                except Exception as e:
+                    logging.error(f"Error consultando web actual admin: {e}")
+            send_whatsapp_message(wa_id, "ℹ️ No tenés ninguna web seleccionada actualmente.\n\nEscribí *mis webs* o *web <slug>* para seleccionar una.")
+            return
+
+        # b. deseleccionar / salir web
+        if texto_limpio in ["web salir", "salir web", "deseleccionar web", "cerrar web"]:
+            current_state = get_user_state(wa_id)
+            temp = current_state.get("temp_data", {})
+            temp.pop("admin_active_web_id", None)
+            set_user_state(wa_id, IDLE, temp)
+            send_whatsapp_message(wa_id, "ℹ️ Has deseleccionado la web activa. Ahora estás en tu contexto habitual.")
+            return
+
+        # c. mis webs / admin webs
+        if texto_limpio in ["mis webs", "admin webs", "ver webs", "listar webs"]:
+            if not supabase:
+                send_whatsapp_message(wa_id, "⚠️ No hay conexión con la base de datos.")
+                return
+            try:
+                web_res = supabase.table("websites").select("id, subdomain, seo_title, created_at").order("created_at", desc=True).limit(10).execute()
+                if not web_res.data:
+                    send_whatsapp_message(wa_id, "ℹ️ No se encontraron webs registradas en el sistema.")
+                    return
+
+                options = []
+                for w in web_res.data:
+                    w_id = w["id"]
+                    slug = w.get("subdomain", "sin-slug")
+                    title = w.get("seo_title") or slug
+                    row_title = f"🏪 {slug}"[:24]
+                    row_desc = str(title)[:72]
+                    options.append({
+                        "id": f"admin_select_{w_id}",
+                        "title": row_title,
+                        "description": row_desc
+                    })
+
+                msg = ("🏢 *Panel Super-Admin: Mis Webs*\n\n"
+                       "Seleccioná una web de la lista para tomar el control y editar sus contenidos, fotos o precios:")
+                send_whatsapp_list(wa_id, msg, "Seleccionar Web", options, "Últimas 10 Webs")
+                return
+            except Exception as e:
+                logging.error(f"Error en comando mis webs: {e}")
+                send_whatsapp_message(wa_id, f"❌ Error al consultar las webs: {e}")
+                return
+
+        # d. buscar <termino>
+        if texto_limpio.startswith("buscar "):
+            term = texto_limpio[7:].strip()
+            if not term:
+                send_whatsapp_message(wa_id, "⚠️ Por favor indicá el término a buscar (ej: *buscar panaderia*).")
+                return
+            if not supabase:
+                send_whatsapp_message(wa_id, "⚠️ No hay conexión con la base de datos.")
+                return
+            try:
+                res1 = supabase.table("websites").select("id, subdomain, seo_title").ilike("subdomain", f"%{term}%").limit(10).execute()
+                res2 = supabase.table("websites").select("id, subdomain, seo_title").ilike("seo_title", f"%{term}%").limit(10).execute()
+
+                found_map = {}
+                for w in (res1.data or []):
+                    found_map[w["id"]] = w
+                for w in (res2.data or []):
+                    found_map[w["id"]] = w
+
+                results = list(found_map.values())[:10]
+                if not results:
+                    send_whatsapp_message(wa_id, f"🔍 No se encontraron webs con el término '{term}'.\n\nProbá con otra palabra o usá *mis webs*.")
+                    return
+
+                options = []
+                for w in results:
+                    w_id = w["id"]
+                    slug = w.get("subdomain", "sin-slug")
+                    title = w.get("seo_title") or slug
+                    row_title = f"🏪 {slug}"[:24]
+                    row_desc = str(title)[:72]
+                    options.append({
+                        "id": f"admin_select_{w_id}",
+                        "title": row_title,
+                        "description": row_desc
+                    })
+
+                msg = (f"🔍 *Resultados de Búsqueda ('{term}'):*\n\n"
+                       "Tocá una web para seleccionarla como activa:")
+                send_whatsapp_list(wa_id, msg, "Ver Coincidencias", options, "Resultados")
+                return
+            except Exception as e:
+                logging.error(f"Error en comando buscar: {e}")
+                send_whatsapp_message(wa_id, f"❌ Error al buscar webs: {e}")
+                return
+
+        # e. admin_select_<website_id>
+        if texto_limpio.startswith("admin_select_"):
+            target_id = texto_limpio.replace("admin_select_", "").strip()
+            fijar_web_activa_admin(wa_id, target_id)
+            return
+
+        # f. web <slug> o slug <slug>
+        is_web_cmd = (texto_limpio.startswith("web ") and texto_limpio not in ["web actual", "web activa", "web salir"]) or texto_limpio.startswith("slug ")
+        if is_web_cmd:
+            term = texto_limpio.split(maxsplit=1)[1].strip()
+            if not term:
+                send_whatsapp_message(wa_id, "⚠️ Por favor indicá el slug o nombre de la web (ej: *web panaderiasanpedro*).")
+                return
+            if not supabase:
+                send_whatsapp_message(wa_id, "⚠️ No hay conexión con la base de datos.")
+                return
+            try:
+                res = supabase.table("websites").select("id, subdomain, seo_title, custom_domain, client_id").ilike("subdomain", f"%{term}%").limit(5).execute()
+                if not res.data:
+                    res = supabase.table("websites").select("id, subdomain, seo_title, custom_domain, client_id").ilike("seo_title", f"%{term}%").limit(5).execute()
+
+                if not res.data:
+                    send_whatsapp_message(wa_id, f"⚠️ No encontramos ninguna web con el término '{term}'.\n\nPodés usar *buscar <texto>* o escribir *mis webs* para ver las últimas.")
+                    return
+
+                target_web = res.data[0]
+                fijar_web_activa_admin(wa_id, target_web["id"], web_data=target_web)
+                return
+            except Exception as e:
+                logging.error(f"Error buscando web para admin: {e}")
+                send_whatsapp_message(wa_id, f"❌ Error al buscar la web: {e}")
+                return
+
+    # 1.3 Acceso directo a menús si el usuario pulsa botones rápidos desde IDLE
+    if estado_actual == IDLE:
+        if texto_limpio in ["main_precios", "precios", "promos", "promociones", "lista de precios"]:
+            mostrar_menu_precios(wa_id)
+            return
+        elif texto_limpio in ["main_editar", "editar"]:
+            mostrar_menu_edicion(wa_id)
+            return
         
     # 1.5 Interceptar código de mudanza
     if texto_limpio.startswith("mudanza-"):
@@ -1110,7 +1450,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             set_user_state(wa_id, IDLE, {})
             
             logging.info(f"NUEVO PAGO: {nombre} ({wa_id}) mandó un comprobante.")
-            send_whatsapp_message("5491134710787", f"💰 NUEVO PAGO DE {nombre} ({wa_id}). Revisá el servidor.")
+            send_whatsapp_message(ADMIN_PHONE, f"💰 NUEVO PAGO DE {nombre} ({wa_id}). Revisá el servidor.")
         elif estado_actual == WAITING_FOR_PRICE_LIST:
             filename_img = f"price_img_{wa_id}_{uuid.uuid4().hex[:8]}.jpg"
             temp_dir = os.path.join(os.getcwd(), "receipts")
@@ -1132,6 +1472,20 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 send_whatsapp_buttons(wa_id, "❌ Error al descargar la imagen.", btn_volver_menu)
             return
         else:
+            if not is_admin_phone(wa_id) and estado_actual == IDLE:
+                sla_msg = ("¡Recibido! 📸 Tu solicitud ya ingresó a la fila de edición y estará visible en tu web en el transcurso de las próximas 24 hs hábiles (Lunes a Viernes).\n\n"
+                           "Te avisaremos por acá en cuanto esté publicado. 🚀")
+                send_whatsapp_message(wa_id, sla_msg)
+                web_info = obtener_web_del_cliente(wa_id)
+                slug = web_info.get("slug", "sin-slug") if web_info else "sin-slug"
+                admin_alert = (f"🔔 SOLICITUD DE CAMBIO RECIBIDA:\n"
+                               f"👤 Cliente: {nombre} ({wa_id})\n"
+                               f"🏪 Web: {slug}\n"
+                               f"💬 Detalle: 📸 [Imagen adjunta]\n\n"
+                               f"👉 Para tomar el control y editar esta web, respondé:\n"
+                               f"web {slug}")
+                send_whatsapp_message(ADMIN_PHONE, admin_alert)
+
             # Es una foto para la web
             msg = "¡Recibimos tu imagen! 📸 ¿En qué parte de tu web querés ponerla?"
             options = [
@@ -1175,6 +1529,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                             content["fotos_servicios"][2] = image_url
                             
                         actualizar_web_content(web_data["version_id"], content)
+                        notificar_cliente_cambio_publicado(wa_id, web_data, "nueva imagen")
                         msg_img = (f"✅ ¡Imagen actualizada con éxito!\n\n"
                                    f"🔗 *Refrescá tu web para verla:* https://{web_data['slug']}.tuweblista.com.ar\n\n"
                                    f"📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
@@ -1231,20 +1586,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             set_user_state(wa_id, WAITING_FOR_DOMAIN_NAME)
             
         elif texto_limpio in ["main_editar", "editar", "2"]:
-            msg = "✏️ *Menú de Edición*\n¿Qué parte de tu página web querés modificar?\n\n💡 _Para volver al menú principal escribí *volver*_"
-            options = [
-                {"id": "EDIT_TITULO", "title": "📝 Editar Título"},
-                {"id": "EDIT_SUBTITULO", "title": "📝 Editar Subtítulo"},
-                {"id": "EDIT_SERVICIOS", "title": "💼 Editar Servicios"},
-                {"id": "EDIT_LOCATION", "title": "📍 Editar Ubicación"},
-                {"id": "EDIT_SCHEDULE", "title": "🕒 Editar Horarios"},
-                {"id": "EDIT_IMAGENES", "title": "🖼️ Editar Imágenes"},
-                {"id": "EDIT_WHATSAPP", "title": "💬 Editar WhatsApp"},
-                {"id": "EDIT_EMAIL", "title": "✉️ Editar Email"},
-                {"id": "EDIT_INSTAGRAM", "title": "📷 Editar Instagram"}
-            ]
-            send_whatsapp_list(wa_id, msg, "Elegir Sección", options, "Edición de Web")
-            set_user_state(wa_id, EDIT_MENU)
+            mostrar_menu_edicion(wa_id)
             
         elif texto_limpio == "main_publicar" or texto_limpio == "3":
             web_info = obtener_web_del_cliente(wa_id)
@@ -1384,6 +1726,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             content["descripciones_servicios"][idx] = nueva_desc
             
             if actualizar_web_content(web_data["version_id"], content):
+                notificar_cliente_cambio_publicado(wa_id, web_data, "servicios actualizados")
                 msg = (f"✅ ¡Servicio actualizado con éxito!\n\n"
                        f"🔗 *Refrescá tu web para ver los cambios:* https://{web_data['slug']}.tuweblista.com.ar\n\n"
                        f"*(Te quedan {remaining} ediciones gratis)*")
@@ -1413,6 +1756,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             content = web_data["content"]
             content["titulo_web"] = nuevo_titulo
             if actualizar_web_content(web_data["version_id"], content):
+                notificar_cliente_cambio_publicado(wa_id, web_data, "título de la web")
                 msg = (f"✅ ¡Título actualizado con éxito a: '{nuevo_titulo}'!\n\n"
                        f"🔗 *Refrescá tu web para ver los cambios:* https://{web_data['slug']}.tuweblista.com.ar\n\n"
                        f"*(Te quedan {remaining} ediciones gratis este mes)*")
@@ -1442,6 +1786,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             content = web_data["content"]
             content["subtitulo"] = nuevo_subtitulo
             if actualizar_web_content(web_data["version_id"], content):
+                notificar_cliente_cambio_publicado(wa_id, web_data, "subtítulo de la web")
                 msg = (f"✅ ¡Subtítulo actualizado con éxito!\n\n"
                        f"🔗 *Refrescá tu web para ver los cambios:* https://{web_data['slug']}.tuweblista.com.ar\n\n"
                        f"*(Te quedan {remaining} ediciones gratis este mes)*")
@@ -1469,6 +1814,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             content["mapa"] = obtener_coordenadas(nueva_ubicacion)
             
             if actualizar_web_content(web_data["version_id"], content):
+                notificar_cliente_cambio_publicado(wa_id, web_data, "ubicación y mapa")
                 msg = (f"✅ ¡Ubicación y Mapa actualizados con éxito!\n\n"
                        f"🔗 *Refrescá tu web para ver los cambios:* https://{web_data['slug']}.tuweblista.com.ar\n\n"
                        f"*(Te quedan {remaining} ediciones gratis)*")
@@ -1494,6 +1840,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             content = web_data["content"]
             content["horario"] = texto_limpio if texto_limpio == "ocultar" else nuevo_horario
             if actualizar_web_content(web_data["version_id"], content):
+                notificar_cliente_cambio_publicado(wa_id, web_data, "horarios de atención")
                 if texto_limpio == "ocultar":
                     msg = (f"✅ ¡Horarios ocultados con éxito!\n\n"
                            f"🔗 *Refrescá tu web para ver los cambios:* https://{web_data['slug']}.tuweblista.com.ar\n\n"
@@ -1520,6 +1867,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 current_content["whatsapp_contacto"] = texto
                 
                 if actualizar_web_content(c_id, current_content):
+                    notificar_cliente_cambio_publicado(wa_id, web_info, "número de WhatsApp de contacto")
                     send_whatsapp_message(wa_id, f"✅ ¡Número de WhatsApp actualizado! Los clientes ahora te contactarán a ese número desde el botón de la web.\n\n🔗 *Refrescá tu web para ver los cambios:* https://{web_info['slug']}.tuweblista.com.ar")
                 else:
                     send_whatsapp_message(wa_id, "⚠️ Hubo un error interno al actualizar el WhatsApp.")
@@ -1541,6 +1889,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 current_content["email_contacto"] = texto_limpio if texto_limpio == "ocultar" else texto
                 
                 if actualizar_web_content(c_id, current_content):
+                    notificar_cliente_cambio_publicado(wa_id, web_info, "email de contacto")
                     if texto_limpio == "ocultar":
                         send_whatsapp_message(wa_id, f"✅ ¡Correo electrónico ocultado de tu web!\n\n🔗 *Refrescá tu web para ver los cambios:* https://{web_info['slug']}.tuweblista.com.ar")
                     else:
@@ -1578,6 +1927,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                     current_content["instagram"] = insta_input
                 
                 if actualizar_web_content(c_id, current_content):
+                    notificar_cliente_cambio_publicado(wa_id, web_info, "cuenta de Instagram")
                     if texto_limpio == "ocultar":
                         send_whatsapp_message(wa_id, f"✅ ¡Instagram ocultado de tu web!\n\n🔗 *Refrescá tu web para ver los cambios:* https://{web_info['slug']}.tuweblista.com.ar")
                     else:
@@ -1685,7 +2035,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                        "📲 _Tocá el botón abajo o escribí *menu* para volver al panel de control._")
         buttons = [{"id": "btn_menu", "title": "📱 Volver al Menú"}]
         send_whatsapp_buttons(wa_id, msg_confirm, buttons)
-        send_whatsapp_message("5491134710787", f"✉️ NUEVO MENSAJE DE {nombre} ({wa_id}):\n\n{texto}\n\nRevisá el dashboard para contestarle.")
+        send_whatsapp_message(ADMIN_PHONE, f"✉️ NUEVO MENSAJE DE {nombre} ({wa_id}):\n\n{texto}\n\nRevisá el dashboard para contestarle.")
         set_user_state(wa_id, IDLE, {})
 
     elif estado_actual == WAITING_FOR_RECEIPT:
@@ -1704,6 +2054,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 content = web_info["content"]
                 content.pop("lista_precios", None)
                 actualizar_web_content(web_info["version_id"], content)
+                notificar_cliente_cambio_publicado(wa_id, web_info, "lista de precios retirada")
                 slug = web_info.get("slug", "mi-web")
                 page_url = f"https://{web_info['custom_domain']}" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar"
                 msg = (f"🗑️ ¡Listo! Tu lista de precios fue eliminada de tu web y ya no aparece publicada.\n\n"
@@ -1754,6 +2105,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 content["lista_precios"] = draft_prices
                 if actualizar_web_content(web_info["version_id"], content):
                     clear_user_state(wa_id)
+                    notificar_cliente_cambio_publicado(wa_id, web_info, "lista de precios actualizada")
                     if web_info.get("custom_domain"):
                         public_url = f"https://{web_info['custom_domain']}/precios"
                     else:
@@ -1824,6 +2176,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 content = web_info["content"]
                 content.pop("lista_precios", None)
                 actualizar_web_content(web_info["version_id"], content)
+                notificar_cliente_cambio_publicado(wa_id, web_info, "lista de precios retirada")
                 slug = web_info.get("slug", "mi-web")
                 page_url = f"https://{web_info['custom_domain']}" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar"
                 msg = (f"🗑️ ¡Listo! Tu lista de precios fue eliminada de tu web y ya no aparece publicada.\n\n"
@@ -1932,6 +2285,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                     content["lista_precios"]["promocion_fecha"] = promocion_data
                     if actualizar_web_content(web_info["version_id"], content):
                         clear_user_state(wa_id)
+                        notificar_cliente_cambio_publicado(wa_id, web_info, "promoción por fecha activada")
                         slug = web_info.get("slug", "mi-web")
                         public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
                         msg = (f"🎉 ¡Promoción activada y publicada con éxito en tu web!\n\n"
@@ -2044,6 +2398,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                     content["lista_precios"]["promocion_zonas"] = promocion_zonas_data
                     if actualizar_web_content(web_info["version_id"], content):
                         clear_user_state(wa_id)
+                        notificar_cliente_cambio_publicado(wa_id, web_info, "promoción por zonas activada")
                         slug = web_info.get("slug", "mi-web")
                         public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
                         msg = (f"🎉 ¡Promoción por zonas activada y publicada con éxito en tu web!\n\n"
@@ -2092,6 +2447,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             lp.pop("promocion_fecha", None)
             if actualizar_web_content(web_info["version_id"], content):
                 clear_user_state(wa_id)
+                notificar_cliente_cambio_publicado(wa_id, web_info, "promoción por fecha finalizada")
                 msg = (f"⏹️ ¡Listo! La promoción por fecha fue detenida y retirada de tu web.\n\n"
                        f"La promoción por zonas continúa activa.\n\n"
                        f"🔗 Refrescá tu web: {public_url}\n\n"
@@ -2105,6 +2461,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             lp.pop("promocion_zonas", None)
             if actualizar_web_content(web_info["version_id"], content):
                 clear_user_state(wa_id)
+                notificar_cliente_cambio_publicado(wa_id, web_info, "promoción por zonas finalizada")
                 msg = (f"⏹️ ¡Listo! La promoción por zonas fue detenida y retirada de tu web.\n\n"
                        f"La promoción por fecha continúa activa.\n\n"
                        f"🔗 Refrescá tu web: {public_url}\n\n"
@@ -2119,6 +2476,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             lp.pop("promocion_zonas", None)
             if actualizar_web_content(web_info["version_id"], content):
                 clear_user_state(wa_id)
+                notificar_cliente_cambio_publicado(wa_id, web_info, "promociones finalizadas")
                 msg = (f"⏹️ ¡Listo! Ambas promociones fueron detenidas y retiradas de tu web.\n\n"
                        f"Tus precios volvieron a mostrarse en su valor regular sin descuentos ni banners.\n\n"
                        f"🔗 Refrescá tu web: {public_url}\n\n"
@@ -2486,6 +2844,7 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
                 content["lista_precios"] = draft_prices
                 if actualizar_web_content(web_info["version_id"], content):
                     clear_user_state(wa_id)
+                    notificar_cliente_cambio_publicado(wa_id, web_info, "precios y promociones actualizados")
                     slug = web_info.get("slug", "mi-web")
                     public_url = f"https://{web_info['custom_domain']}/precios" if web_info.get("custom_domain") else f"https://{slug}.tuweblista.com.ar/precios"
                     msg = (f"🎉 ¡Tus nuevos precios y promociones fueron publicados con éxito en tu web!\n\n"
@@ -2513,5 +2872,26 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
     else:
         # Fallback si estamos en IDLE
         if estado_actual == IDLE:
+            if not is_admin_phone(wa_id):
+                palabras_cambio = [
+                    "cambi", "modific", "actualiz", "agreg", "edit", "subir", "sacar", "quitar", "borrar",
+                    "precio", "foto", "imagen", "texto", "horario", "ubicaci", "direcci", "servicio",
+                    "telefono", "teléfono", "whatsapp", "mail", "email", "instagram", "logo", "portada",
+                    "promo", "solicitud"
+                ]
+                if any(p in texto_limpio for p in palabras_cambio):
+                    sla_msg = ("¡Recibido! 📸 Tu solicitud ya ingresó a la fila de edición y estará visible en tu web en el transcurso de las próximas 24 hs hábiles (Lunes a Viernes).\n\n"
+                               "Te avisaremos por acá en cuanto esté publicado. 🚀")
+                    send_whatsapp_message(wa_id, sla_msg)
+                    web_info = obtener_web_del_cliente(wa_id)
+                    slug = web_info.get("slug", "sin-slug") if web_info else "sin-slug"
+                    admin_alert = (f"🔔 SOLICITUD DE CAMBIO RECIBIDA:\n"
+                                   f"👤 Cliente: {nombre} ({wa_id})\n"
+                                   f"🏪 Web: {slug}\n"
+                                   f"💬 Detalle: {texto}\n\n"
+                                   f"👉 Para tomar el control y editar esta web, respondé:\n"
+                                   f"web {slug}")
+                    send_whatsapp_message(ADMIN_PHONE, admin_alert)
+                    return
             send_whatsapp_message(wa_id, "Hola 👋. Escribí la palabra *menu* para ver las opciones disponibles.")
 

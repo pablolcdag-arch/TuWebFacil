@@ -252,6 +252,7 @@ lista_precios{titulo, columnas_pago[], items[{servicio, precios{efectivo, transf
 - **IDs de opciones** (`MAIN_*`, `EDIT_*`, `FOTO_*`, `DOMINIO_*`, `PRECIOS_*`, `PROMO_*`) se comparan en minúsculas: son contrato con WhatsApp.
 - **Comandos de eliminación en WAITING_FOR_PRICE_LIST:** `quitar`, `borrar`, `eliminar`, `ocultar` (remueven `lista_precios` de `website_content` y confirman al usuario).
 - **Comandos de detención de promo:** `detener promo`, `frenar promo`, `pausar promo`, `quitar promo` (desactivan `promocion_fecha` y/o `promocion_zonas` y restauran precios regulares).
+- **Modo Super-Admin (`ADMIN_PHONE`):** Comandos `web <slug>`, `slug <slug>`, `mis webs`, `buscar <texto>`, `web actual`, `web salir` para conmutar contexto multisitio en `temp_data["admin_active_web_id"]`. Notificación automática al cliente titular (`notificar_cliente_cambio_publicado`) al publicar cambios. Acuse de recibo en `IDLE` con SLA de hasta 24 hs hábiles (Lunes a Viernes).
 - El estado **persiste ante reinicios** de `tuwebfacil_receiver`.
 
 ---

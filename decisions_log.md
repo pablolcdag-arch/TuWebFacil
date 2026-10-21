@@ -357,3 +357,22 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   4. Cero regresiones en `test_price_list_backend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
 - **Razón:** Reflejar inmediatamente en la experiencia web del cliente final las promociones configuradas por el comerciante desde WhatsApp, asegurando un diseño atractivo, consistente y con total claridad en los precios tachados y bonificados tanto en celulares como en computadoras.
 - **Impacto:** Conversión incrementada en webs de clientes gracias a ofertas y descuentos visuales transparentes y calculados al centavo en el carrito y pedidos de WhatsApp.
+
+## [20/10/2026] — Implementación del Modo Super-Admin Multisitio, Acuse SLA 24hs y Notificaciones Automáticas a Clientes
+- **Decisión:**
+  1. En `bot_engine.py`, se implementó la lógica de seguridad y detección del Super-Admin (`is_admin_phone`) comparando los últimos 10 dígitos del teléfono contra `ADMIN_PHONE` (`5491134710787`).
+  2. **Conmutación de Contexto Multisitio para el Administrador:**
+     - Comandos `web <slug>` o `slug <slug>`: buscan la web en Supabase por `subdomain` o `seo_title` y fijan `admin_active_web_id` en `user_sessions.temp_data` en SQLite (WAL).
+     - Comandos `mis webs`, `admin webs` y `buscar <texto>`: despliegan listas interactivas de WhatsApp ($\le 10$ filas, títulos $\le 24$ chars, descripciones $\le 72$ chars) permitiendo seleccionar y cambiar de sitio web con un solo toque.
+     - Comandos `web actual` (muestra la web activa) y `web salir` (limpia el contexto).
+     - Se adaptó `obtener_web_del_cliente(phone)` para que, si quien consulta es `ADMIN_PHONE`, enrute automáticamente a la web fijada en `admin_active_web_id` con todos los datos del cliente titular (`client_name`, `client_phone`, `client_id`).
+  3. **Despacho Automático de Avisos al Cliente Titular:**
+     - Se creó el helper `notificar_cliente_cambio_publicado(wa_id_editor, web_info, descripcion_cambio)`.
+     - Cuando el administrador confirma y publica un cambio en una web ajena (asignación de imágenes en `WAITING_FOR_IMAGE_ROLE`, publicación de lista de precios en `CONFIRM_PRICE_LIST_DRAFT` o ajustes de precios/promociones en `CONFIRM_PRICE_ADJUST_DRAFT`), el bot envía automáticamente un WhatsApp al cliente titular con el enlace directo a su web.
+  4. **Receptor de Solicitudes Outbound con SLA (24 hs hábiles):**
+     - En `IDLE`, si un cliente regular envía una imagen o texto solicitando cambios, el bot le responde con un acuse de recibo cordial indicando el plazo de hasta 24 hs hábiles (Lunes a Viernes).
+     - Simultáneamente, despacha una alerta a `ADMIN_PHONE` con el detalle del pedido y el comando sugerido `web <slug>` para tomar el control inmediato.
+  5. En `scripts/utils/test_price_list_backend.py`, se implementó la sección `[TEST 14]` cubriendo la detección de admin, conmutación de contexto, aislamiento de clientes regulares, acuse de recibo con SLA y despacho automático de notificaciones a clientes (100% PASS).
+  6. Cero regresiones en `test_price_list_frontend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
+- **Razón:** Habilitar el modelo comercial Outbound ("Demo Servida en Bandeja" y servicio "Llave en Mano" / Concierge), permitiendo al administrador editar y gestionar decenas de páginas web de clientes desde su celular en segundos, automatizando el aviso de entrega al cliente y estableciendo expectativas claras de servicio (SLA).
+- **Impacto:** Operación "manos libres" para el administrador y percepción de servicio VIP para los comerciantes sin fricción tecnológica.

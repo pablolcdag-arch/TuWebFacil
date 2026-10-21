@@ -1583,6 +1583,228 @@ Corte y barba: $20.000"""
     # Limpiar estado final
     bot_engine.clear_user_state(test_wa)
 
+    # ---------------------------------------------------------
+    # TEST 14: Modo Super-Admin Multisitio, SLA Outbound y Notificaciones al Cliente
+    # ---------------------------------------------------------
+    print("\n[TEST 14] Verificando Modo Super-Admin Multisitio, SLA Outbound y Notificaciones...")
+
+    admin_wa = bot_engine.ADMIN_PHONE
+    regular_wa = "5491199990001"
+    client_owner_phone = "5491144445555"
+
+    # 14A. Verificación de is_admin_phone (con/sin prefijos, espacios, guiones y rechazo de otros números)
+    assert bot_engine.is_admin_phone(admin_wa) is True
+    assert bot_engine.is_admin_phone("5491134710787") is True
+    assert bot_engine.is_admin_phone("+54 9 11 3471-0787") is True
+    assert bot_engine.is_admin_phone("1134710787") is True
+    assert bot_engine.is_admin_phone(regular_wa) is False
+    assert bot_engine.is_admin_phone("5491100000000") is False
+    assert bot_engine.is_admin_phone("") is False
+    assert bot_engine.is_admin_phone(None) is False
+    print("  ✅ is_admin_phone() detecta al admin con o sin prefijo y aísla números regulares.")
+
+    # 14B. Comando 'web <slug>' por Super-Admin fija admin_active_web_id en SQLite
+    mock_admin_target_web = {
+        "id": "w_client_999",
+        "subdomain": "panaderiasanpedro",
+        "seo_title": "Panadería San Pedro",
+        "custom_domain": None,
+        "client_id": "c_client_999"
+    }
+    mock_target_client = {
+        "id": "c_client_999",
+        "name": "Pedro Gomez",
+        "phone": client_owner_phone
+    }
+    mock_target_content = {
+        "id": "v_client_999",
+        "content": json.dumps({
+            "titulo_web": "Panadería San Pedro",
+            "lista_precios": {
+                "titulo": "Precios de Panadería",
+                "columnas_pago": ["Efectivo"],
+                "items": [{"servicio": "Pan Francés", "precios": {"efectivo": "$2.000"}}]
+            }
+        })
+    }
+
+    bot_engine.clear_user_state(admin_wa)
+
+    # Mockear consultas a Supabase para selección de web
+    def mock_table_router(name):
+        mock_t = MagicMock()
+        if name == "websites":
+            mock_t.select.return_value.ilike.return_value.limit.return_value.execute.return_value = MagicMock(data=[mock_admin_target_web])
+            mock_t.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[mock_admin_target_web])
+            mock_t.select.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(data=[mock_admin_target_web])
+        elif name == "clients":
+            mock_t.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[mock_target_client])
+            mock_t.select.return_value.ilike.return_value.execute.return_value = MagicMock(data=[mock_target_client])
+        elif name == "website_content":
+            mock_t.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[mock_target_content])
+        return mock_t
+
+    mock_sb = MagicMock()
+    mock_sb.table.side_effect = mock_table_router
+
+    with patch("bot_engine.supabase", mock_sb), \
+         patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(admin_wa, "web panaderiasanpedro", "Admin")
+        assert mock_send_btns.called
+        msg_out = mock_send_btns.call_args[0][1]
+        assert "Web Activa Seleccionada" in msg_out
+        assert "Panadería San Pedro" in msg_out
+        assert "Pedro Gomez" in msg_out
+        assert client_owner_phone in msg_out
+        assert "panaderiasanpedro.tuweblista.com.ar" in msg_out
+        btns = mock_send_btns.call_args[0][2]
+        for b in btns:
+            assert len(b["title"]) <= 20
+        assert any(b["id"] == "main_precios" for b in btns)
+        assert any(b["id"] == "main_editar" for b in btns)
+        assert any(b["id"] == "btn_menu" for b in btns)
+
+    # Verificar persistencia en temp_data de SQLite user_sessions
+    state_admin = bot_engine.get_user_state(admin_wa)
+    assert state_admin["temp_data"].get("admin_active_web_id") == "w_client_999"
+    conn = sqlite3.connect(bot_engine.get_db_path())
+    c = conn.cursor()
+    c.execute("SELECT temp_data FROM user_sessions WHERE phone = ?", (str(admin_wa).strip(),))
+    row = c.fetchone()
+    conn.close()
+    assert row is not None
+    saved_sess = json.loads(row[0])
+    assert saved_sess.get("admin_active_web_id") == "w_client_999"
+    print("  ✅ Comando 'web <slug>' fija contexto en SQLite y envía botones rápidos <= 20 chars.")
+
+    # 14C. obtener_web_del_cliente(admin_wa) retorna la web fijada y titular
+    with patch("bot_engine.supabase", mock_sb):
+        resolved_web = bot_engine.obtener_web_del_cliente(admin_wa)
+        assert resolved_web is not None
+        assert resolved_web["website_id"] == "w_client_999"
+        assert resolved_web["slug"] == "panaderiasanpedro"
+        assert resolved_web["client_name"] == "Pedro Gomez"
+        assert resolved_web["client_phone"] == client_owner_phone
+    print("  ✅ obtener_web_del_cliente() para ADMIN_PHONE despacha la web activa del titular.")
+
+    # 14D. Comandos de admin ejecutados por usuario regular NO alteran el contexto
+    bot_engine.clear_user_state(regular_wa)
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=None):
+        bot_engine.procesar_mensaje(regular_wa, "web panaderiasanpedro", "Usuario Regular")
+        state_reg = bot_engine.get_user_state(regular_wa)
+        assert state_reg.get("temp_data", {}).get("admin_active_web_id") is None
+    print("  ✅ Usuario regular ejecutando comandos admin es aislado y no altera contextos.")
+
+    # 14E. Despacho automático de notificación al cliente titular al publicar cambio por Super-Admin
+    mock_resolved_web = {
+        "website_id": "w_client_999",
+        "version_id": "v_client_999",
+        "slug": "panaderiasanpedro",
+        "custom_domain": None,
+        "client_name": "Pedro Gomez",
+        "client_phone": client_owner_phone,
+        "content": {
+            "titulo_web": "Panadería San Pedro",
+            "lista_precios": {
+                "titulo": "Precios de Panadería",
+                "columnas_pago": ["Efectivo"],
+                "items": [{"servicio": "Pan Francés", "precios": {"efectivo": "$2.500"}}]
+            }
+        }
+    }
+    bot_engine.set_user_state(admin_wa, bot_engine.CONFIRM_PRICE_ADJUST_DRAFT, {
+        "admin_active_web_id": "w_client_999",
+        "draft_token": "token123",
+        "draft_prices": mock_resolved_web["content"]["lista_precios"]
+    })
+
+    with patch("bot_engine.actualizar_web_content", return_value=True) as mock_update, \
+         patch("bot_engine.obtener_web_del_cliente", return_value=mock_resolved_web), \
+         patch("bot_engine.send_whatsapp_buttons"), \
+         patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(admin_wa, "btn_adj_confirm", "Admin")
+        mock_update.assert_called_once()
+        destinos = [c[0][0] for c in mock_send_msg.call_args_list]
+        assert client_owner_phone in destinos, f"No se notificó al cliente en {client_owner_phone}"
+        msg_al_cliente = [c[0][1] for c in mock_send_msg.call_args_list if c[0][0] == client_owner_phone][0]
+        assert "Pedro Gomez" in msg_al_cliente
+        assert "precios y promociones actualizados" in msg_al_cliente
+        assert "https://panaderiasanpedro.tuweblista.com.ar" in msg_al_cliente
+    print("  ✅ Notificación automática despachada al cliente titular con link oficial.")
+
+    # 14F. Comandos 'mis webs', 'buscar' y 'web actual' del Super-Admin
+    with patch("bot_engine.supabase", mock_sb), \
+         patch("bot_engine.send_whatsapp_list") as mock_send_list:
+        bot_engine.procesar_mensaje(admin_wa, "mis webs", "Admin")
+        assert mock_send_list.called
+        assert "Panel Super-Admin: Mis Webs" in mock_send_list.call_args[0][1]
+
+    with patch("bot_engine.supabase", mock_sb), \
+         patch("bot_engine.send_whatsapp_list") as mock_send_list:
+        bot_engine.procesar_mensaje(admin_wa, "buscar panaderia", "Admin")
+        assert mock_send_list.called
+        assert "Resultados de Búsqueda" in mock_send_list.call_args[0][1]
+
+    with patch("bot_engine.supabase", mock_sb), \
+         patch("bot_engine.send_whatsapp_buttons") as mock_send_btns:
+        bot_engine.procesar_mensaje(admin_wa, "web actual", "Admin")
+        assert mock_send_btns.called
+        assert "Web Activa Actualmente" in mock_send_btns.call_args[0][1]
+        assert "Panadería San Pedro" in mock_send_btns.call_args[0][1]
+
+    # 14G. Deseleccionar web activa con 'web salir'
+    with patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(admin_wa, "web salir", "Admin")
+        assert mock_send_msg.called
+        assert "Has deseleccionado la web activa" in mock_send_msg.call_args[0][1]
+        assert "admin_active_web_id" not in bot_engine.get_user_state(admin_wa)["temp_data"]
+    print("  ✅ Comandos 'mis webs', 'buscar', 'web actual' y 'web salir' verificados.")
+
+    # 14H. Receptor Outbound con SLA (24 hs hábiles) y Alerta al Super-Admin
+    bot_engine.clear_user_state(regular_wa)
+    mock_reg_web = {
+        "website_id": "w_reg_1",
+        "slug": "estetica-sol",
+        "client_name": "Ana Sol",
+        "client_phone": regular_wa
+    }
+    # Caso 1: Cliente regular envía texto solicitando cambios en IDLE
+    with patch("bot_engine.obtener_web_del_cliente", return_value=mock_reg_web), \
+         patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(regular_wa, "Hola! Quiero actualizar los precios de los tratamientos", "Ana Sol")
+        destinos = [c[0][0] for c in mock_send_msg.call_args_list]
+        assert regular_wa in destinos
+        assert admin_wa in destinos
+        msg_cliente = [c[0][1] for c in mock_send_msg.call_args_list if c[0][0] == regular_wa][0]
+        assert "24 hs hábiles" in msg_cliente
+        assert "¡Recibido!" in msg_cliente
+        msg_admin = [c[0][1] for c in mock_send_msg.call_args_list if c[0][0] == admin_wa][0]
+        assert "SOLICITUD DE CAMBIO RECIBIDA" in msg_admin
+        assert "Ana Sol" in msg_admin
+        assert "estetica-sol" in msg_admin
+        assert "web estetica-sol" in msg_admin
+
+    # Caso 2: Cliente regular envía foto en IDLE
+    bot_engine.clear_user_state(regular_wa)
+    with patch("bot_engine.obtener_web_del_cliente", return_value=mock_reg_web), \
+         patch("bot_engine.send_whatsapp_list"), \
+         patch("bot_engine.send_whatsapp_message") as mock_send_msg:
+        bot_engine.procesar_mensaje(regular_wa, "", "Ana Sol", msg_type="image", media_id="media_img_123")
+        destinos = [c[0][0] for c in mock_send_msg.call_args_list]
+        assert regular_wa in destinos
+        assert admin_wa in destinos
+        msg_cliente = [c[0][1] for c in mock_send_msg.call_args_list if c[0][0] == regular_wa][0]
+        assert "24 hs hábiles" in msg_cliente
+        msg_admin = [c[0][1] for c in mock_send_msg.call_args_list if c[0][0] == admin_wa][0]
+        assert "SOLICITUD DE CAMBIO RECIBIDA" in msg_admin
+        assert "📸 [Imagen adjunta]" in msg_admin
+    print("  ✅ Acuse de recibo con SLA 24hs hábiles y alerta con 'web <slug>' verificados.")
+
+    # Limpiar estado final
+    bot_engine.clear_user_state(admin_wa)
+    bot_engine.clear_user_state(regular_wa)
+
     print("\n" + "=" * 70)
     print("🎉 TODAS LAS PRUEBAS DE LA ETAPA 1 (BACKEND) PASARON CON ÉXITO (100% PASS)")
     print("=" * 70)
