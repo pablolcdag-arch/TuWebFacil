@@ -59,6 +59,12 @@ def normalizar_telefono(phone_raw):
     if not digits:
         return ""
     
+    # Si comienza con 01115 (13 dígitos: 0 + 11 + 15 + 8 dígitos)
+    if digits.startswith("01115") and len(digits) == 13:
+        return f"54911{digits[5:]}"
+    # Si comienza con 1115 (12 dígitos: 11 + 15 + 8 dígitos)
+    if digits.startswith("1115") and len(digits) == 12:
+        return f"54911{digits[4:]}"
     # Si ya comienza con 549 y tiene longitud estándar (13 dígitos)
     if digits.startswith("549") and len(digits) >= 12:
         return digits

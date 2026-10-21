@@ -502,14 +502,14 @@ def actualizar_web_content(version_id, new_content):
 
 def obtener_coordenadas(ubicacion_texto):
     """Convierte texto de ubicación en coordenadas. Foco en precisión Argentina."""
-    if not ubicacion_texto or "argentina" in ubicacion_texto.lower() or "no proporcionada" in ubicacion_texto.lower():
+    if not ubicacion_texto or ubicacion_texto.strip().lower() == "argentina" or "no proporcionada" in ubicacion_texto.lower():
         return {"lat": -38.416097, "lon": -63.616672, "zoom": 4}
     
     try:
         # Aseguramos que la búsqueda sea en Argentina para evitar conflictos con ciudades homónimas
         busqueda = f"{ubicacion_texto}, Argentina" if "argentina" not in ubicacion_texto.lower() else ubicacion_texto
-        url = f"https://nominatim.openstreetmap.org/search?format=json&q={busqueda}&limit=1"
-        res = requests.get(url, headers={'User-Agent': 'TuWebFacilApp/1.0'})
+        url = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(busqueda)}&limit=1"
+        res = requests.get(url, headers={'User-Agent': 'TuWebFacilApp/1.0'}, timeout=5)
         data = res.json()
         
         if data:
@@ -518,6 +518,20 @@ def obtener_coordenadas(ubicacion_texto):
             # Zoom: 16 para dirección exacta, 12 para ciudad/zona
             tiene_numeros = any(char.isdigit() for char in ubicacion_texto)
             return {"lat": lat, "lon": lon, "zoom": 16 if tiene_numeros else 12}
+            
+        # Si la primera consulta devuelve vacía, sanitizar dirección (remover código postal y simplificar CABA)
+        query_san = re.sub(r'C\d{4}[A-Za-z]*', '', busqueda)
+        query_san = re.sub(r'Cdad\.?\s*Autónoma\s*de\s*Buenos\s*Aires', 'Buenos Aires', query_san, flags=re.IGNORECASE)
+        query_san = re.sub(r',\s*,', ',', query_san)
+        query_san = re.sub(r'\s+', ' ', query_san).strip(' ,')
+        
+        url_san = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(query_san)}&limit=1"
+        res_san = requests.get(url_san, headers={'User-Agent': 'TuWebFacilApp/1.0'}, timeout=5)
+        data_san = res_san.json()
+        if data_san:
+            lat = float(data_san[0]["lat"])
+            lon = float(data_san[0]["lon"])
+            return {"lat": lat, "lon": lon, "zoom": 16}
     except Exception as e:
         logging.warning(f"Error en Nominatim: {e}")
     

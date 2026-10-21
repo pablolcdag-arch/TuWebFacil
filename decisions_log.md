@@ -417,3 +417,21 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   4. Cero regresiones en `test_outbound_campaign.py`, `test_bulk_demo_generator.py`, `test_price_list_backend.py`, `test_price_list_frontend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
 - **Razón:** Maximizar la tasa de conversión y el retorno de inversión en las campañas de prospección saliente ("Demo Servida en Bandeja"), asegurando que el esfuerzo comercial y los mensajes de WhatsApp se dirijan exclusivamente a comerciantes que realmente carecen de una web profesional o que solo dependen de perfiles en redes sociales.
 - **Impacto:** Embudo comercial altamente enfocado, cero desperdicio de créditos de mensajería y generación automática de listas de leads de alta intención.
+
+## [21/10/2026] — Optimización de Webs Demo Outbound: Geolocalización Exacta, Promociones Activas Didácticas, Variedad de Fotos y Contacto Humanizado
+- **Decisión:**
+  1. En `app.py` y `bot_engine.py`:
+     - Se corrigió `obtener_coordenadas()`: se eliminó el falso positivo `if "argentina" in ubicacion_texto.lower()` reemplazándolo por `ubicacion_texto.strip().lower() == "argentina"`. Se incorporó sanitización automática para remover códigos postales argentinos (`C1419...`) y simplificar CABA a "Buenos Aires" antes de consultar Nominatim, evitando que direcciones reales colapsen a las coordenadas del centro del país.
+     - En `buscar_foto_unsplash()`, se implementó aleatorización real en la selección de imágenes (`page = random.randint(1, 3)`, `per_page=15` y `random.shuffle`) junto con términos complementarios del rubro para garantizar que comercios similares no reciban las mismas fotos.
+     - En `generar_plantilla_dinamica()` (IA y fallback), se inyectaron promociones de ejemplo activas:
+       - `promocion_fecha`: Descuento del 15% con vigencia calculada dinámicamente a 30 días.
+       - `promocion_zonas`: Combos de 2 zonas/servicios (10% OFF) y 3 zonas/servicios (15% OFF).
+  2. En `scripts/ops/generate_demos_from_csv.py`:
+     - Se amplió `normalizar_telefono()` para admitir prefijos locales argentinos con código de área y móvil (`011 15-XXXX-XXXX` de 13 dígitos y `11 15-XXXX-XXXX` de 12 dígitos) normalizándolos correctamente a `54911XXXXXXXX`.
+  3. En `templates/client_template.html`:
+     - **Iframe de Google Maps:** Utiliza prioritariamente `web_content.ubicacion_detectada` codificada en `q` a zoom 16, logrando que el mapa muestre con total exactitud la calle y altura del local.
+     - **Email de Contacto:** Se reemplazó el fallback `contacto@tuweblista.com.ar` por `tumail@gmail.com` para resguardar la identidad de la plataforma en sitios de prospectos.
+     - **Microcopia Humanizada:** Se reemplazó la frase "chateando con el bot" por "por WhatsApp" en el footer.
+     - **Notas Didácticas de Promociones:** En los banners de promociones por fecha y combos de zonas, cuando `web_status == 'demo'`, se añadió la nota: *"Promoción de ejemplo activa. Podés activar, pausar o cambiar descuentos en segundos con un simple mensaje de WhatsApp."*
+- **Razón:** Maximizar el impacto persuasivo y la credibilidad en la entrega de demos personalizadas para la prospección Outbound ("Demo Servida en Bandeja"), mostrando un mapa perfecto en la puerta del negocio, fotos variadas, promociones listas para usar y una comunicación humana y transparente.
+- **Impacto:** Experiencia de usuario impecable, eliminación de fricciones y tasa de respuesta sustancialmente superior en la prospección por WhatsApp.

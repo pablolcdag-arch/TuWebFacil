@@ -9,6 +9,8 @@ import logging
 import csv
 import io
 import time
+import random
+from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, send_from_directory, render_template, redirect, url_for, send_file, session, flash
 from flask_cors import CORS 
@@ -178,14 +180,14 @@ def format_phone(phone_str):
 
 def obtener_coordenadas(ubicacion_texto):
     """Convierte texto de ubicación en coordenadas. Foco en precisión Argentina."""
-    if not ubicacion_texto or "argentina" in ubicacion_texto.lower() or "no proporcionada" in ubicacion_texto.lower():
+    if not ubicacion_texto or ubicacion_texto.strip().lower() == "argentina" or "no proporcionada" in ubicacion_texto.lower():
         return {"lat": -38.416097, "lon": -63.616672, "zoom": 4}
     
     try:
         # Aseguramos que la búsqueda sea en Argentina para evitar conflictos con ciudades homónimas
         busqueda = f"{ubicacion_texto}, Argentina" if "argentina" not in ubicacion_texto.lower() else ubicacion_texto
-        url = f"https://nominatim.openstreetmap.org/search?format=json&q={busqueda}&limit=1"
-        res = requests.get(url, headers={'User-Agent': 'TuWebFacilApp/1.0'})
+        url = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(busqueda)}&limit=1"
+        res = requests.get(url, headers={'User-Agent': 'TuWebFacilApp/1.0'}, timeout=5)
         data = res.json()
         
         if data:
@@ -194,42 +196,87 @@ def obtener_coordenadas(ubicacion_texto):
             # Zoom: 16 para dirección exacta, 12 para ciudad/zona
             tiene_numeros = any(char.isdigit() for char in ubicacion_texto)
             return {"lat": lat, "lon": lon, "zoom": 16 if tiene_numeros else 12}
+            
+        # Si la primera consulta devuelve vacía, sanitizar dirección (remover código postal y simplificar CABA)
+        query_san = re.sub(r'C\d{4}[A-Za-z]*', '', busqueda)
+        query_san = re.sub(r'Cdad\.?\s*Autónoma\s*de\s*Buenos\s*Aires', 'Buenos Aires', query_san, flags=re.IGNORECASE)
+        query_san = re.sub(r',\s*,', ',', query_san)
+        query_san = re.sub(r'\s+', ' ', query_san).strip(' ,')
+        
+        url_san = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(query_san)}&limit=1"
+        res_san = requests.get(url_san, headers={'User-Agent': 'TuWebFacilApp/1.0'}, timeout=5)
+        data_san = res_san.json()
+        if data_san:
+            lat = float(data_san[0]["lat"])
+            lon = float(data_san[0]["lon"])
+            return {"lat": lat, "lon": lon, "zoom": 16}
     except Exception as e:
         logging.warning(f"Error en Nominatim: {e}")
         
     return {"lat": -38.416097, "lon": -63.616672, "zoom": 4}
 
 def buscar_foto_unsplash(query, rubro_general, used_urls=None):
-    """Búsqueda de fotos con respaldo para asegurar estética profesional y evitar repetidas."""
+    """Búsqueda de fotos con variedad aleatoria y respaldo para asegurar estética profesional y evitar repetidas."""
     if used_urls is None:
         used_urls = set()
         
     if not UNSPLASH_ACCESS_KEY: 
         return "https://images.unsplash.com/photo-1521791136364-798a7bc0d26e?q=80&w=1000"
     
+    headers = {"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"}
+    
+    # Lista ordenada de queries a intentar
+    queries_to_try = [query] if query else []
+    if rubro_general and str(rubro_general).strip():
+        rg = str(rubro_general).strip()
+        if not query or rg.lower() != str(query).lower():
+            queries_to_try.append(rg)
+            
+    # Enriquecer con queries complementarias según rubro o query
+    combined = f"{query or ''} {rubro_general or ''}".lower()
+    complementarios = []
+    if any(k in combined for k in ["estetic", "belleza", "skincare", "depilac", "unas", "uñas", "facial", "spa"]):
+        complementarios = ["beauty salon modern", "skincare aesthetic clinic", "wellness spa interior"]
+    elif any(k in combined for k in ["clinic", "salud", "medic", "odontolog", "dental", "doctor", "consultorio"]):
+        complementarios = ["modern medical clinic", "health wellness consultation", "dental aesthetic clinic"]
+    elif any(k in combined for k in ["panader", "cafe", "cafeter", "pasteler", "gastronom", "restaurant", "bar", "comida"]):
+        complementarios = ["artisan bakery pastry", "cozy coffee shop interior", "gourmet restaurant food"]
+    elif any(k in combined for k in ["abogad", "estudio", "contador", "inmobili", "arquitect", "oficina", "legal"]):
+        complementarios = ["modern professional office", "architecture design studio", "corporate consulting desk"]
+    elif any(k in combined for k in ["barber", "peluquer"]):
+        complementarios = ["barbershop haircut styling", "modern hair salon studio"]
+    elif any(k in combined for k in ["gimnasio", "fitness", "yoga", "pilates", "entrenam"]):
+        complementarios = ["fitness gym modern", "wellness yoga studio"]
+    else:
+        complementarios = ["modern stylish workspace", "premium artisan craft", "customer service professional"]
+        
+    queries_to_try.extend(complementarios)
+
     try:
-        # Buscamos varias fotos para poder elegir una no usada
-        url = f"https://api.unsplash.com/search/photos?query={query}&per_page=10&orientation=landscape&content_filter=high"
-        headers = {"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"}
-        response = requests.get(url, headers=headers)
-        data = response.json()
-        
-        if data.get("results"):
-            for result in data["results"]:
-                img_url = result["urls"]["regular"]
-                if img_url not in used_urls:
-                    used_urls.add(img_url)
-                    return img_url
-        
-        # Respaldo: si no hay foto específica o todas están usadas, buscamos por rubro general
-        url_alt = f"https://api.unsplash.com/search/photos?query={rubro_general}&per_page=10"
-        data_alt = requests.get(url_alt, headers=headers).json()
-        if data_alt.get("results"):
-            for result in data_alt["results"]:
-                img_url = result["urls"]["regular"]
-                if img_url not in used_urls:
-                    used_urls.add(img_url)
-                    return img_url
+        for q in queries_to_try:
+            if not q:
+                continue
+            page = random.randint(1, 3)
+            url = f"https://api.unsplash.com/search/photos?query={requests.utils.quote(str(q))}&page={page}&per_page=15&orientation=landscape&content_filter=high"
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                results = data.get("results", [])
+                if not results and page > 1:
+                    # Si la página 2 o 3 no tiene fotos (catálogo acotado), reintentar página 1
+                    url_p1 = f"https://api.unsplash.com/search/photos?query={requests.utils.quote(str(q))}&page=1&per_page=15&orientation=landscape&content_filter=high"
+                    res_p1 = requests.get(url_p1, headers=headers, timeout=5)
+                    if res_p1.status_code == 200:
+                        results = res_p1.json().get("results", [])
+                
+                if results:
+                    candidates = list(results)
+                    random.shuffle(candidates)
+                    for result in candidates:
+                        img_url = result.get("urls", {}).get("regular")
+                        if img_url and img_url not in used_urls:
+                            used_urls.add(img_url)
+                            return img_url
     except Exception as e:
         logging.warning(f"Error buscando foto en Unsplash: {e}")
     
@@ -273,6 +320,32 @@ def format_price(val):
 
 def generar_plantilla_dinamica(rubro, titulo, zona, horario):
     rubro_display = rubro.strip().capitalize() if rubro and str(rubro).strip() else "Servicio"
+    fecha_fin = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+    fecha_display = (datetime.now() + timedelta(days=30)).strftime("%d/%m")
+
+    promo_fecha_default = {
+        "titulo": "Promo Lanzamiento Especial",
+        "activa": True,
+        "escalas": [
+            {
+                "hasta": fecha_fin,
+                "hasta_display": fecha_display,
+                "descuento": 15,
+                "label": f"15% OFF Especial hasta el {fecha_display}"
+            }
+        ]
+    }
+
+    promo_zonas_default = {
+        "titulo": "Combos por Cantidad de Zonas",
+        "activa": True,
+        "acumulable": False,
+        "escalas": [
+            {"cantidad": 2, "descuento": 10, "label": "2 zonas o servicios: 10% OFF"},
+            {"cantidad": 3, "descuento": 15, "label": "3 zonas o servicios: 15% OFF"}
+        ]
+    }
+
     plantilla_base = {
         "titulo_web": titulo if titulo else "Mi Negocio",
         "subtitulo": rubro if rubro else "Brindamos soluciones de máxima calidad",
@@ -323,7 +396,9 @@ def generar_plantilla_dinamica(rubro, titulo, zona, horario):
                     },
                     "descuento": 0
                 }
-            ]
+            ],
+            "promocion_fecha": promo_fecha_default,
+            "promocion_zonas": promo_zonas_default
         }
     }
 
@@ -379,7 +454,28 @@ Genera un JSON estrictamente con la siguiente estructura y datos relevantes para
                 }},
                 "descuento": 0
             }}
-        ]
+        ],
+        "promocion_fecha": {{
+            "titulo": "Promo Lanzamiento Especial",
+            "activa": true,
+            "escalas": [
+                {{
+                    "hasta": "{fecha_fin}",
+                    "hasta_display": "{fecha_display}",
+                    "descuento": 15,
+                    "label": "15% OFF Especial hasta el {fecha_display}"
+                }}
+            ]
+        }},
+        "promocion_zonas": {{
+            "titulo": "Combos por Cantidad de Zonas",
+            "activa": true,
+            "acumulable": false,
+            "escalas": [
+                {{"cantidad": 2, "descuento": 10, "label": "2 zonas o servicios: 10% OFF"}},
+                {{"cantidad": 3, "descuento": 15, "label": "3 zonas o servicios: 15% OFF"}}
+            ]
+        }}
     }}
 }}
 IMPORTANTE PARA PRECIOS: Los valores deben ser creíbles en pesos argentinos para el rubro "{rubro}", con Efectivo como el valor más conveniente, Transferencia ~10% más y Tarjeta ~20% más. En descuento colocar un número entero (ej: 15 para 15% OFF en el primer item, 0 en los demás).
@@ -429,10 +525,35 @@ Devuelve SOLO el JSON válido, sin formato markdown ni explicaciones adicionales
                             "descuento": desc
                         })
                 if sanitized_items:
+                    # Validar promocion_fecha de IA si vino, sino usar promo_fecha_default
+                    promo_fecha_ai = lp.get("promocion_fecha")
+                    if isinstance(promo_fecha_ai, dict) and promo_fecha_ai.get("escalas"):
+                        promo_fecha_final = {
+                            "titulo": promo_fecha_ai.get("titulo", promo_fecha_default["titulo"]),
+                            "activa": promo_fecha_ai.get("activa", True),
+                            "escalas": promo_fecha_ai.get("escalas", promo_fecha_default["escalas"])
+                        }
+                    else:
+                        promo_fecha_final = promo_fecha_default
+
+                    # Validar promocion_zonas de IA si vino, sino usar promo_zonas_default
+                    promo_zonas_ai = lp.get("promocion_zonas")
+                    if isinstance(promo_zonas_ai, dict) and promo_zonas_ai.get("escalas"):
+                        promo_zonas_final = {
+                            "titulo": promo_zonas_ai.get("titulo", promo_zonas_default["titulo"]),
+                            "activa": promo_zonas_ai.get("activa", True),
+                            "acumulable": promo_zonas_ai.get("acumulable", False),
+                            "escalas": promo_zonas_ai.get("escalas", promo_zonas_default["escalas"])
+                        }
+                    else:
+                        promo_zonas_final = promo_zonas_default
+
                     plantilla_base["lista_precios"] = {
                         "titulo": lp.get("titulo", "Precios y Servicios"),
                         "columnas_pago": lp.get("columnas_pago", ["Efectivo", "Transferencia", "Tarjeta"]),
-                        "items": sanitized_items
+                        "items": sanitized_items,
+                        "promocion_fecha": promo_fecha_final,
+                        "promocion_zonas": promo_zonas_final
                     }
         else:
             # Si no devolvió lista_precios pero sí servicios_sugeridos, sincronizar nombres
