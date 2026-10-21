@@ -885,7 +885,8 @@ def maps_scraper():
     if not query:
         return jsonify({"error": "Falta el término de búsqueda"}), 400
         
-    solo_sin_web = request.form.get('solo_sin_web', 'true').lower() in ['true', '1', 'on']
+    raw_vals = [v.lower() for v in request.form.getlist('solo_sin_web')]
+    solo_sin_web = any(v in ['true', '1', 'on'] for v in raw_vals) if raw_vals else True
 
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     if not api_key:

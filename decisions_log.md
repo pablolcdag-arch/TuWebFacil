@@ -405,7 +405,7 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Decisión:**
   1. En `app.py`, en el endpoint `POST /admin/maps_scraper`, se implementó la discriminación de prospectos calificados:
      - Se añadió el campo `website` al llamado a la Google Places Details API (`fields=name,formatted_phone_number,formatted_address,website`).
-     - Se captura el parámetro booleano `solo_sin_web` (con tolerancia a `true`, `1`, `on` vs `false`).
+     - Se captura el parámetro booleano `solo_sin_web` mediante `request.form.getlist('solo_sin_web')` para procesar correctamente listas múltiples generadas por el fallback `<input type="hidden">` del formulario HTML (resolviendo `['false', 'true']` -> `True`, `['false']` -> `False` y llamadas directas/API -> `True` por defecto).
      - Si el comercio no posee sitio web (`""` o whitespace), se clasifica como `"Sin web"` y se incluye en la prospección.
      - Si el comercio tiene enlaces a redes sociales (`SOCIAL_DOMAINS`: instagram, facebook, fb.com, fb.me, linktr.ee, tiktok, wa.me, whatsapp.com), se clasifica como `"Redes (<url>)"` y se incluye en la prospección.
      - Si el comercio cuenta con sitio web propio comercial, se descarta cuando `solo_sin_web=True` (comportamiento por defecto) o se conserva registrando la URL cuando `solo_sin_web=False`.

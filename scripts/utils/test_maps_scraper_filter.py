@@ -15,6 +15,7 @@ import io
 import csv
 import json
 from unittest.mock import MagicMock, patch
+from werkzeug.datastructures import MultiDict
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if BASE_DIR not in sys.path:
@@ -196,6 +197,45 @@ def test_csv_encoding_and_headers():
 
     print("✅ TEST 3 PASADO: Codificación UTF-8 y nombres de columnas certificados.")
 
+def test_maps_scraper_html_form_multiple_values():
+    banner("4. Simulación de formulario HTML con lista múltiple de valores ('solo_sin_web')")
+
+    client = app.app.test_client()
+    with client.session_transaction() as sess:
+        sess['admin_logged_in'] = True
+
+    mock_get = build_mock_places_responses()
+
+    with patch.dict(os.environ, {"GOOGLE_MAPS_API_KEY": "fake_maps_key"}), \
+         patch("requests.get", side_effect=mock_get):
+
+        # 1. Simular checkbox marcado: el navegador envía el hidden ('false') y el checkbox ('true')
+        response_checked = client.post("/admin/maps_scraper", data=MultiDict([
+            ("query", "test comercios"),
+            ("solo_sin_web", "false"),
+            ("solo_sin_web", "true")
+        ]))
+        assert response_checked.status_code == 200
+        csv_checked = response_checked.data.decode('utf-8')
+        rows_checked = list(csv.reader(io.StringIO(csv_checked)))[1:]
+        nombres_checked = [r[0] for r in rows_checked]
+        assert "Clínica Dental Sonrisas" not in nombres_checked, "Con checkbox marcado debe descartar webs propias"
+        assert len(rows_checked) == 3
+
+        # 2. Simular checkbox desmarcado: el navegador solo envía el hidden ('false')
+        response_unchecked = client.post("/admin/maps_scraper", data=MultiDict([
+            ("query", "test comercios"),
+            ("solo_sin_web", "false")
+        ]))
+        assert response_unchecked.status_code == 200
+        csv_unchecked = response_unchecked.data.decode('utf-8')
+        rows_unchecked = list(csv.reader(io.StringIO(csv_unchecked)))[1:]
+        nombres_unchecked = [r[0] for r in rows_unchecked]
+        assert "Clínica Dental Sonrisas" in nombres_unchecked, "Con checkbox desmarcado debe incluir webs propias"
+        assert len(rows_unchecked) == 4
+
+    print("✅ TEST 4 PASADO: Formulario HTML con tupla de valores resuelve correctamente a True o False.")
+
 def main():
     print("\n" + "="*70)
     print("🚀 INICIANDO TEST SUITE: FILTRO INTELIGENTE DE SITIOS WEB EN MAPS SCRAPER")
@@ -204,6 +244,7 @@ def main():
     test_maps_scraper_with_solo_sin_web_true()
     test_maps_scraper_with_solo_sin_web_false()
     test_csv_encoding_and_headers()
+    test_maps_scraper_html_form_multiple_values()
 
     print("\n" + "="*70)
     print("🎉 TODOS LOS TESTS DE MAPS SCRAPER FILTER PASARON (100% OK)")
