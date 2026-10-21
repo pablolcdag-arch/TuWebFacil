@@ -171,7 +171,7 @@ TuWebLista/
 ├── scripts/
 │   ├── db/                          ← Mantenimiento/inspección de BD (check_*, create_table, list_tables)
 │   ├── ops/                         ← Operaciones VPS: safe_deploy.py (whitelist estricta), generate_demos_from_csv.py,
-│   │                                  view_logs.py, instagram_scheduler.py, watchdog.py, upsell_cron.py ...
+│   │                                  send_outbound_campaign.py, view_logs.py, instagram_scheduler.py, watchdog.py, upsell_cron.py ...
 │   ├── utils/                       ← QA y simulaciones (qa_suite.py, qa_admin_suite.py, simulate_user.py ...)
 │   └── onboarding_cron.py           ← Mensajes de onboarding día 3 / día 10 (agendamiento no confirmado)
 ├── daily_billing_cron.py            ← Suspende webs con pago fallido > 72 hs (en raíz; agendamiento no confirmado)
@@ -228,6 +228,7 @@ TuWebLista/
 | `upsell_logs` | `upsell_cron.py` | Webs a las que ya se envió el mensaje de upsell |
 | `user_sessions` | `bot_engine` (persistencia) | FSM del bot: `phone`, `estado`, `temp_data`, `updated_at` |
 | `price_drafts` | `bot_engine` / `app.py` | Historial de tokens de borrador y datos para vista previa (`/precios?preview=TOKEN`) |
+| `opt_outs` | `bot_engine` | Lista negra de teléfonos que solicitaron no recibir más mensajes de outbound |
 
 La ruta es `os.path.join(os.getcwd(), "messages.db")` → **depende del working directory** (en el VPS, `directory=/var/www/tuwebfacil` de Supervisor).
 

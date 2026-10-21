@@ -386,3 +386,17 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   5. Cero regresiones en `test_price_list_backend.py`, `test_price_list_frontend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
 - **Razón:** Potenciar el impacto visual y la tasa de conversión en la prospección Outbound ("Demo Servida en Bandeja"), mostrando una web completa y viva con catálogo y modalidades de pago desde el primer segundo, eliminando el temor a la complejidad técnica y automatizando la generación de decenas de páginas sin intervención manual.
 - **Impacto:** Capacidad de procesar y generar 50 demos personalizadas en minutos a costo marginal cero, listas para ser despachadas por WhatsApp.
+
+## [21/10/2026] — Motor de Despacho Outbound, Respuestas FSM y Gestión de Opt-Out
+- **Decisión:**
+  1. En `sender.py`, se implementó `send_whatsapp_template()` para despachar plantillas oficiales de Meta WhatsApp Cloud API (`type: "template"`) con estructura de componentes y parámetros posicionales (`{{1}}`, `{{2}}`, etc.).
+  2. En `receiver.py`, se implementó la extracción defensiva en `button_reply` (`b_reply.get('id') or b_reply.get('title', '')`), permitiendo procesar tanto botones interactivos clásicos como botones de respuesta rápida de plantillas de Meta.
+  3. En `bot_engine.py`:
+     - Se creó la tabla SQLite `opt_outs` (`phone TEXT PRIMARY KEY, created_at TIMESTAMP`) bajo modo WAL.
+     - Se interceptó la respuesta `[ ❌ No me interesa ]`: despacha mensaje de despedida cordial y persiste el número en `opt_outs` para evitar futuros envíos salientes.
+     - Se interceptó la respuesta `[ 🚀 Sí, me interesa ]`: despacha la guía conversacional amigable en 4 opciones (precios, fotos, dominio propio o activar por \$2.000) y alerta de inmediato al Super-Admin (`ADMIN_PHONE`) con el comando `web <slug>`.
+     - En la consulta de dominio propio (`WAITING_FOR_DOMAIN_NAME`), se implementó la normalización sin obligar a escribir `.com.ar`, la inclusión del enlace oficial de aranceles `https://nic.ar/aranceles` (\$8.500 anuales de NIC.ar) y la advertencia clara de 48 hs para la delegación de DNS.
+  4. Se creó el script `scripts/ops/send_outbound_campaign.py` con interfaz CLI (`--input`, `--limit`, `--delay`, `--dry-run`), exclusión de teléfonos en `opt_outs`, prevención de duplicación (`enviado_fecha`) y pacing temporal de 10-15 segundos.
+  5. Se creó la suite automatizada `scripts/utils/test_outbound_campaign.py` (Tests 1 al 5) y se certificó 100% PASS en las 6 suites del proyecto sin regresiones.
+- **Razón:** Cerrar el circuito tecnológico y operativo para la prospección masiva por WhatsApp oficial de Meta, garantizando una experiencia de usuario fluida, protegiendo la reputación del número ante spam mediante opt-outs y alertando al administrador en tiempo real ante prospectos calificados.
+- **Impacto:** Canal Outbound 100% operativo y seguro, listo para ejecutar campañas masivas con alta tasa de respuesta y conversión.

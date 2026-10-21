@@ -47,11 +47,16 @@ def handle_messages():
             elif msg_type == 'interactive':
                 inter_obj = mensaje_obj.get('interactive', {})
                 if inter_obj.get('type') == 'button_reply':
-                    texto = inter_obj['button_reply']['id']
+                    b_reply = inter_obj.get('button_reply', {})
+                    texto = b_reply.get('id') or b_reply.get('title', '')
                 elif inter_obj.get('type') == 'list_reply':
-                    texto = inter_obj['list_reply']['id']
+                    l_reply = inter_obj.get('list_reply', {})
+                    texto = l_reply.get('id') or l_reply.get('title', '')
                 else:
                     texto = ""
+            elif msg_type == 'button':
+                btn_obj = mensaje_obj.get('button', {})
+                texto = btn_obj.get('text') or btn_obj.get('payload', '')
             else:
                 texto = ""
                 

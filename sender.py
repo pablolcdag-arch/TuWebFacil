@@ -217,3 +217,48 @@ def send_whatsapp_list(to_number, text, button_text, options, title=""):
     except Exception as e:
         print(f"❌ Error de conexión: {e}")
         return False
+
+def send_whatsapp_template(to_number, template_name, language_code="es_AR", body_parameters=None):
+    """
+    Envía una plantilla oficial de WhatsApp Cloud API.
+    body_parameters: lista de strings o valores para {{1}}, {{2}}, {{3}}, etc.
+    """
+    url = f"https://graph.facebook.com/{VERSION}/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    components = []
+    if body_parameters:
+        components.append({
+            "type": "body",
+            "parameters": [{"type": "text", "text": str(p)} for p in body_parameters]
+        })
+        
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_number,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {
+                "code": language_code
+            }
+        }
+    }
+    if components:
+        payload["template"]["components"] = components
+        
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code == 200:
+            print(f"✅ Plantilla '{template_name}' enviada con éxito a {to_number}")
+            return True
+        else:
+            print(f"❌ Error al enviar plantilla: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Error de conexión enviando plantilla: {e}")
+        return False

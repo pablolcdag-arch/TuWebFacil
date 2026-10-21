@@ -111,9 +111,15 @@ def init_sessions_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS opt_outs (
+                phone TEXT PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         conn.commit()
     except Exception as e:
-        logging.error(f"Error al inicializar tabla user_sessions en {get_db_path()}: {e}")
+        logging.error(f"Error al inicializar tablas SQLite en {get_db_path()}: {e}")
     finally:
         if conn:
             conn.close()
@@ -121,6 +127,53 @@ def init_sessions_db():
 
 # Inicializar la tabla al cargar el módulo
 init_sessions_db()
+
+
+def is_opted_out(phone) -> bool:
+    """Verifica si un número telefónico está en la lista de opt-outs (no contactar)."""
+    if not phone:
+        return False
+    digits = re.sub(r'\D', '', str(phone))
+    if not digits:
+        return False
+    conn = None
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path, timeout=10)
+        c = conn.cursor()
+        c.execute("SELECT phone FROM opt_outs WHERE phone = ? OR phone LIKE ?", 
+                  (digits, f"%{digits[-10:]}" if len(digits) >= 10 else digits))
+        return c.fetchone() is not None
+    except Exception as e:
+        logging.error(f"Error consultando opt_outs para {phone}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def register_opt_out(phone) -> bool:
+    """Registra un número telefónico en la lista de opt-outs."""
+    if not phone:
+        return False
+    digits = re.sub(r'\D', '', str(phone))
+    if not digits:
+        return False
+    conn = None
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path, timeout=10)
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO opt_outs (phone) VALUES (?)", (digits,))
+        conn.commit()
+        logging.info(f"Registrado opt-out para {digits}")
+        return True
+    except Exception as e:
+        logging.error(f"Error registrando opt_out para {phone}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_user_state(wa_id) -> dict:
@@ -1239,6 +1292,39 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         elif texto_limpio in ["main_editar", "editar"]:
             mostrar_menu_edicion(wa_id)
             return
+
+    # 1.4 Interceptar respuestas a la campaña Outbound ("propuesta_web_comercio")
+    # 1.4.1 Opt-Out: [ ❌ No me interesa ]
+    if "no me interesa" in texto_limpio or "no, por ahora no" in texto_limpio:
+        register_opt_out(wa_id)
+        clear_user_state(wa_id)
+        msg_despedida = ("¡Entendido! Muchas gracias por tu respuesta y muchos éxitos con el negocio.\n\n"
+                         "Si en algún momento necesitás tu página web, acá estamos a disposición. ¡Saludos! 👋")
+        send_whatsapp_message(wa_id, msg_despedida)
+        return
+
+    # 1.4.2 Afirmativo: [ 🚀 Sí, me interesa ]
+    if any(k in texto_limpio for k in ["si me interesa", "sí, me interesa", "me interesa"]):
+        clear_user_state(wa_id)
+        guia_msg = ("¡Excelente elección! 🎉 Nosotros nos encargamos de dejártela lista sin que tengas que aprender nada raro.\n\n"
+                    "👉 ¿Por dónde querés arrancar?\n\n"
+                    "1️⃣ Tus Precios: Mandanos una foto de tu pizarra, un archivo (Excel/PDF) o simplemente escribilos acá.\n"
+                    "2️⃣ Tus Fotos: Mandanos las fotos de tu local o productos directo por este chat.\n"
+                    "3️⃣ Dominio Propio: Si querés tu propio .com.ar (nosotros nos encargamos de todo el registro en NIC.ar por $8.500/año sin costo extra de mantenimiento), escribí el nombre acá (por ejemplo: mipanaderia) y te digo al instante si está disponible.\n"
+                    "4️⃣ Dejarla activa como está: Decinos \"activar\" y te pasamos el Alias bancario para que abones los $2.000 mensuales.\n\n"
+                    "¿Qué preferís hacer primero?")
+        send_whatsapp_message(wa_id, guia_msg)
+
+        # Alerta inmediata al Administrador
+        web_info = obtener_web_del_cliente(wa_id)
+        slug = web_info.get("slug", "sin-web") if web_info else "sin-web"
+        admin_msg = (f"🔥 ¡PROSPECTO INTERESADO!\n"
+                     f"👤 Comercio: {nombre} ({wa_id})\n"
+                     f"🏪 Web: {slug}\n"
+                     f"👉 Para tomar el control y editar esta web, respondé:\n"
+                     f"web {slug}")
+        send_whatsapp_message(ADMIN_PHONE, admin_msg)
+        return
         
     # 1.5 Interceptar código de mudanza
     if texto_limpio.startswith("mudanza-"):
@@ -1347,15 +1433,18 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
         send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
         return
 
-    # 1.7 Interceptar intención de reactivación de web pausada ("reactivar mi web", "reactivar")
-    if "reactivar mi web" in texto_limpio or "reactivar" in texto_limpio:
+    # 1.7 Interceptar intención de activación o reactivación de web ("activar", "reactivar mi web", "reactivar")
+    if texto_limpio in ["activar", "activar mi web", "dejarla activa"] or "reactivar mi web" in texto_limpio or "reactivar" in texto_limpio:
         web_info = obtener_web_del_cliente(wa_id)
-        msg = (f"¡Hola {nombre}! 👋 Tu web está guardada y lista para reactivarse.\n\n"
-               "Para volver a ponerla online hoy mismo por solo $2.000/mes (o con dominio .com.ar propio por $10.500), transferí el monto al siguiente Alias:\n"
+        accion = "reactivacion" if "reactivar" in texto_limpio else "activacion"
+        verbo = "reactivarse" if "reactivar" in texto_limpio else "activarse"
+        accion_txt = "volver a ponerla online" if "reactivar" in texto_limpio else "dejarla activa online"
+        msg = (f"¡Hola {nombre}! 👋 Tu web está guardada y lista para {verbo}.\n\n"
+               f"Para {accion_txt} hoy mismo por solo $2.000/mes (o con dominio .com.ar propio por $10.500), transferí el monto al siguiente Alias:\n"
                "*tuweblista*\n\n"
                "Una vez que transfieras, envianos la foto del comprobante por acá y la activaremos de inmediato. 🚀")
         send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
-        temp_data = {"accion": "reactivacion", "monto": 2000}
+        temp_data = {"accion": accion, "monto": 2000}
         if web_info:
             if "slug" in web_info:
                 temp_data["slug"] = web_info["slug"]
@@ -1956,19 +2045,23 @@ def procesar_mensaje(wa_id, texto, nombre, msg_type="text", media_id=None, filen
             result = subprocess.run(["whois", dominio_limpio], capture_output=True, text=True, timeout=10)
             output = result.stdout
             
-            if "El dominio no se encuentra registrado en NIC Argentina" in output:
-                msg = (f"✅ ¡Buenas noticias! **{dominio_limpio}** ESTÁ DISPONIBLE.\n\n"
-                       f"El costo de registrar un dominio en nic.ar a tu nombre es de $8.500 ARS anuales + $2.000 del abono mensual de la web (Total hoy: $10.500).\n\n"
-                       "Para registrarlo y activar tu plan profesional, transferí los $10.500 al siguiente Alias:\n"
-                       "*tuweblista*\n\n"
-                       "Una vez que transfieras, envianos la foto del comprobante por acá y lo activaremos.")
-                send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
+            if "El dominio no se encuentra registrado en NIC Argentina" in output or "no match" in output.lower() or "disponible" in output.lower():
                 current_temp = get_user_state(wa_id).get("temp_data") or {}
+                monto = current_temp.get("monto", 8500)
+                monto_str = f"${monto:,}".replace(",", ".") if monto != 8500 else "$8.500"
+                msg = (f"¡Buenas noticias! {dominio_limpio} está disponible para registrarlo a tu nombre. 🎉\n\n"
+                       f"Ese arancel de $8.500 anuales es el arancel oficial que cobra directamente el organismo nacional (NIC Argentina). Si lo hicieras por tu cuenta en AFIP te costaría exactamente lo mismo.\n\n"
+                       f"🔗 Podés chequear el arancel oficial del gobierno acá:\n"
+                       f"https://nic.ar/aranceles\n\n"
+                       f"🎁 Nosotros te hacemos todo el trámite, alta y configuración técnica 100% GRATIS, sin ningún cargo extra. (El trámite entre que se abona el arancel y la web queda activa bajo tu .com.ar demora aproximadamente 48 hs por la delegación oficial de DNS).\n\n"
+                       f"Para que lo registremos hoy mismo, transferí los {monto_str} al Alias:\n"
+                       f"👉 tuweblista\n\n"
+                       f"En cuanto nos mandes el comprobante por acá, te lo dejamos registrado y conectado a tu web. 🚀")
+                send_whatsapp_buttons(wa_id, msg, btn_volver_menu)
                 current_temp["dominio"] = dominio_limpio
                 if "plan" not in current_temp:
                     current_temp["plan"] = "custom_domain"
-                if "monto" not in current_temp:
-                    current_temp["monto"] = 10500
+                current_temp["monto"] = monto
                 set_user_state(wa_id, WAITING_FOR_RECEIPT, current_temp)
             else:
                 msg = (f"❌ Lo sentimos, **{dominio_limpio}** ya está registrado por otra persona.\n\n"
