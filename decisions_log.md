@@ -435,3 +435,34 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
      - **Notas Didácticas de Promociones:** En los banners de promociones por fecha y combos de zonas, cuando `web_status == 'demo'`, se añadió la nota: *"Promoción de ejemplo activa. Podés activar, pausar o cambiar descuentos en segundos con un simple mensaje de WhatsApp."*
 - **Razón:** Maximizar el impacto persuasivo y la credibilidad en la entrega de demos personalizadas para la prospección Outbound ("Demo Servida en Bandeja"), mostrando un mapa perfecto en la puerta del negocio, fotos variadas, promociones listas para usar y una comunicación humana y transparente.
 - **Impacto:** Experiencia de usuario impecable, eliminación de fricciones y tasa de respuesta sustancialmente superior en la prospección por WhatsApp.
+
+## [21/10/2026] — Motor de Barrido Masivo en Google Maps (Bulk Maps Scraper) y Control en Panel Admin
+- **Decisión:**
+  1. Se creó el Catálogo Geográfico Jerárquico de Argentina (`scripts/utils/arg_geo_catalog.py`), estructurando más de 250 nodos de prospección:
+     - CABA: Los 48 barrios oficiales.
+     - Gran Buenos Aires (AMBA): Los 35 partidos y municipios del conurbano.
+     - Provincias de Santa Fe y Córdoba: Grandes urbes divididas por macro-barrios (Rosario, Santa Fe Capital, Córdoba Capital) y ciudades cabeceras del interior (Rafaela, Venado Tuerto, Río Cuarto, Villa María, Carlos Paz, etc.).
+     - Mendoza, Tucumán, Buenos Aires Interior y resto de capitales y ciudades de las 23 provincias del país.
+     - Macro-zona `TODA_ARGENTINA` consolidada para barridos federales completos.
+  2. Se desarrolló el Motor de Barrido en Segundo Plano (`scripts/ops/bulk_maps_scraper.py`):
+     - Ejecución multi-hilo (`threading.Thread`) que no bloquea a Gunicorn ni depende del timeout web (120s).
+     - Deduplicación en tiempo real por número de teléfono normalizado entre zonas limítrofes.
+     - Freno de seguridad configurable (`max_comercios` / Stop Loss) para contención estricta de costos de la API de Google Maps Platform.
+     - Estimador en tiempo real de consumo en USD considerando el crédito gratuito mensual de $200 USD.
+     - Escritura y persistencia progresiva en tiempo real en la carpeta `leads/prospectos_{rubro}_{zona}.csv`.
+     - Sistema de checkpointing / reanudación (`--resume` / `.scraper_state.json`) para continuar sin repetir zonas ya consultadas.
+     - Bandera de detención limpia (`stop_requested`) para pausar o frenar a demanda.
+  3. En `app.py`, se implementaron las rutas de control bajo sesión administrativa:
+     - `GET /admin/bulk_scraper/presets`: Listado dinámico de zonas disponibles.
+     - `POST /admin/bulk_scraper/start`: Inicio de tarea asíncrona (409 ante tareas en curso).
+     - `GET /admin/bulk_scraper/status`: Telemetría en vivo del barrido (zona actual, leads, saldo consumido, porcentaje, estado).
+     - `POST /admin/bulk_scraper/stop`: Detención controlada con guardado progresivo.
+     - `GET /admin/bulk_scraper/download/<filename>`: Descarga segura con `secure_filename()` desde la carpeta `leads/`.
+  4. En `templates/admin_dashboard.html`, se diseñó la tarjeta interactiva:
+     - Formulario con rubro, selector jerárquico de zonas, límite de seguridad y filtro web.
+     - Widget de progreso en vivo con barra animada, grid de 4 métricas en tiempo real, botón para detener y botón verde de descarga al finalizar.
+     - Lógica JavaScript vanilla con polling cada 2s y auto-restauración de estado en `DOMContentLoaded`.
+  5. Se creó la suite automatizada `scripts/utils/test_bulk_maps_scraper.py` (Tests 1 al 4) y se certificó 100% PASS en las 8 suites del proyecto sin ninguna regresión.
+  6. Se aisló `leads/*.csv` en `.gitignore` para proteger los datos de contacto y se actualizó `safe_deploy.py` para sincronizar `arg_geo_catalog.py`.
+- **Razón:** Eliminar por completo el esfuerzo manual de búsqueda barrio por barrio, permitiendo prospectar miles de comercios calificados a nivel nacional o provincial directamente desde el panel de control, con visualización en tiempo real, seguridad financiera total y cero riesgo de sobrecostos.
+- **Impacto:** Capacidad de extracción masiva de leads en un solo clic, automatización de punta a punta del embudo comercial y autonomía operativa 100% desde la web.

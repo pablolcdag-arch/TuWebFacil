@@ -50,6 +50,7 @@ ALLOWED_DIRS = [
     ("static/img", "static/img"),
     ("scripts/ops", "scripts/ops"),
     ("scripts/utils/price_list_parser.py", "scripts/utils/price_list_parser.py"),
+    ("scripts/utils/arg_geo_catalog.py", "scripts/utils/arg_geo_catalog.py"),
     ("scripts/onboarding_cron.py", "scripts/onboarding_cron.py"),
 ]
 

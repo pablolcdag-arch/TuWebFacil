@@ -199,6 +199,11 @@ def procesar_csv(input_path, output_path=None, limit=None, skip_sleep=False, sup
             fila["link_demo"] = ""
             continue
 
+        if fila.get("link_demo") and fila.get("slug"):
+            print(f"[{i}/{total_a_procesar}] ⏭️ '{nombre}' ya tiene demo generada ({fila['link_demo']}), conservando...")
+            demos_generadas.append(fila)
+            continue
+
         tel_raw = fila.get(mapa_cols["telefono"]) if mapa_cols["telefono"] else ""
         phone_norm = normalizar_telefono(tel_raw)
 
@@ -258,20 +263,31 @@ def procesar_csv(input_path, output_path=None, limit=None, skip_sleep=False, sup
                 
                 client_id = cli_res.data[0]["id"]
                 
-                web_res = supabase_client.table("websites").insert({
-                    "client_id": client_id,
-                    "subdomain": slug,
-                    "seo_title": res_ia.get("titulo_web", nombre),
-                    "status": "demo"
-                }).execute()
-                
-                website_id = web_res.data[0]["id"]
-                
-                supabase_client.table("website_content").insert({
-                    "website_id": website_id,
-                    "content": json.dumps(res_ia),
-                    "is_current": True
-                }).execute()
+                # Verificar si el cliente ya tenía una web creada en Supabase para evitar duplicados
+                web_existente = supabase_client.table("websites").select("id, subdomain").eq("client_id", client_id).execute()
+                if web_existente.data:
+                    slug = web_existente.data[0]["subdomain"]
+                    website_id = web_existente.data[0]["id"]
+                    link_demo = f"https://{slug}.tuweblista.com.ar"
+                    supabase_client.table("website_content").update({
+                        "content": json.dumps(res_ia),
+                        "is_current": True
+                    }).eq("website_id", website_id).execute()
+                else:
+                    web_res = supabase_client.table("websites").insert({
+                        "client_id": client_id,
+                        "subdomain": slug,
+                        "seo_title": res_ia.get("titulo_web", nombre),
+                        "status": "demo"
+                    }).execute()
+                    
+                    website_id = web_res.data[0]["id"]
+                    
+                    supabase_client.table("website_content").insert({
+                        "website_id": website_id,
+                        "content": json.dumps(res_ia),
+                        "is_current": True
+                    }).execute()
             except Exception as se:
                 logging.warning(f"Error guardando en Supabase para '{nombre}': {se}")
 

@@ -42,7 +42,7 @@ TuWebLista centraliza:
 1. **Landing + generador de demos** (`index.html` → `POST /process_form`) — el visitante completa un formulario y la IA genera su web demo al instante.
 2. **Webs de clientes** (`templates/client_template.html`) — servidas por subdominio (`{slug}.tuweblista.com.ar`) o por dominio propio (`custom_domain`). Incluye lista de precios y servicios multi-pago interactiva con buscador en vivo y selección múltiple (carrito) para pedidos de presupuestos consolidados por WhatsApp.
 3. **Bot de WhatsApp (panel de control del cliente)** — edición de textos, servicios, imágenes, ubicación, horarios, contacto; búsqueda de dominio; transferencia de titularidad; contacto con soporte; publicación/planes.
-4. **Panel de administración** (`/admin`) — aprobación de pagos, publicación con dominio + Nginx + SSL, demos abandonadas y retargeting, mensajes de soporte, difusión masiva, prospección vía Google Maps (con filtro inteligente para comercios sin web o solo con redes sociales), marketing.
+4. **Panel de administración** (`/admin`) — aprobación de pagos, publicación con dominio + Nginx + SSL, demos abandonadas y retargeting, mensajes de soporte, difusión masiva, prospección vía Google Maps (búsqueda simple y barrido multi-zona/nacional automatizado con freno de seguridad y telemetría en vivo), marketing.
 5. **Marketing automatizado de la propia marca** — borradores de posteos para Instagram con Gemini, programación y publicación vía Instagram Graph API.
 6. **Procesos en segundo plano** — scheduler de Instagram, cron de upsell diario, (y scripts de billing/onboarding/watchdog cuyo agendamiento en el VPS **no está confirmado**).
 

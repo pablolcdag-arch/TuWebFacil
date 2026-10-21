@@ -9,6 +9,8 @@ messages.db
 receipts/
 resumenes_banco/
 static/marketing_images/
+leads/*.csv
+prospectos_*.csv
 
 # Logs
 *.log

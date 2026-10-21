@@ -17,6 +17,13 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from sender import send_whatsapp_message
+from scripts.utils.arg_geo_catalog import obtener_presets
+from scripts.ops.bulk_maps_scraper import (
+    start_scraper_task,
+    stop_scraper_task,
+    get_scraper_status,
+    get_current_task
+)
 
 # Configuración de Logging
 logging.basicConfig(
@@ -1087,6 +1094,83 @@ def maps_scraper():
     except Exception as e:
         logging.error(f"Error en Maps Scraper: {e}")
         return jsonify({"error": str(e)}), 500
+
+# ==============================================================================
+# Rutas de Control de Barrido Masivo en Google Maps (Bulk Maps Scraper)
+# ==============================================================================
+@app.route('/admin/bulk_scraper/presets', methods=['GET'])
+def bulk_scraper_presets():
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+    return jsonify({"presets": obtener_presets()}), 200
+
+@app.route('/admin/bulk_scraper/start', methods=['POST'])
+def bulk_scraper_start():
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+    
+    data = request.get_json(silent=True) or request.form
+    rubro = data.get('rubro')
+    if not rubro:
+        return jsonify({"error": "Falta el campo 'rubro'"}), 400
+        
+    zona = data.get('zona', 'caba')
+    try:
+        max_comercios = int(data.get('max_comercios', 1000))
+    except (ValueError, TypeError):
+        max_comercios = 1000
+        
+    solo_sin_web_val = data.get('solo_sin_web', True)
+    if isinstance(solo_sin_web_val, str):
+        solo_sin_web = solo_sin_web_val.lower() in ['true', '1', 'on']
+    else:
+        solo_sin_web = bool(solo_sin_web_val)
+        
+    resume_val = data.get('resume', False)
+    if isinstance(resume_val, str):
+        resume = resume_val.lower() in ['true', '1', 'on']
+    else:
+        resume = bool(resume_val)
+        
+    res = start_scraper_task(
+        rubro=rubro,
+        zona_clave=zona,
+        max_comercios=max_comercios,
+        solo_sin_web=solo_sin_web,
+        resume=resume
+    )
+    if res.get("status") == "already_running":
+        return jsonify(res), 409
+        
+    return jsonify(res), 200
+
+@app.route('/admin/bulk_scraper/status', methods=['GET'])
+def bulk_scraper_status():
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+    return jsonify(get_scraper_status()), 200
+
+@app.route('/admin/bulk_scraper/stop', methods=['POST'])
+def bulk_scraper_stop():
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+    return jsonify(stop_scraper_task()), 200
+
+@app.route('/admin/bulk_scraper/download/<filename>', methods=['GET'])
+def bulk_scraper_download(filename):
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+    
+    safe_filename = secure_filename(filename)
+    if not safe_filename.endswith('.csv'):
+        return jsonify({"error": "Formato de archivo inválido"}), 400
+        
+    leads_dir = os.path.join(os.getcwd(), "leads")
+    file_path = os.path.join(leads_dir, safe_filename)
+    if not os.path.exists(file_path):
+        return jsonify({"error": "Archivo no encontrado"}), 404
+        
+    return send_from_directory(leads_dir, safe_filename, as_attachment=True)
 
 @app.route('/admin/view_receipt/<pid>')
 def view_receipt(pid):

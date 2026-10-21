@@ -599,6 +599,478 @@
         {% endif %}
     </div>
 
+    <!-- Barrido Masivo de Prospectos (Google Maps Multi-Zona) -->
+    <div class="glass-card rounded-3xl p-8 mt-6" id="bulk-scraper-card">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+                <h2 class="text-xl font-bold flex items-center">
+                    <i class="fas fa-radar text-red-500 mr-3"></i> Barrido Masivo de Prospectos (Google Maps)
+                </h2>
+                <p class="text-sm text-slate-400 mt-1">
+                    Búsqueda multi-zona automatizada para prospectar comercios masivamente y alimentar el Generador de Demos.
+                </p>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-red-500/20 text-red-400 text-xs font-bold rounded-full border border-red-500/30 whitespace-nowrap self-start sm:self-auto">
+                <i class="fas fa-globe-americas"></i> Multi-Zona & Nacional
+            </span>
+        </div>
+
+        <!-- Formulario de Configuración -->
+        <form id="bulk-scraper-form" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Campo Rubro -->
+                <div class="md:col-span-1">
+                    <label for="bulk_rubro" class="block text-sm font-semibold text-slate-300 mb-2">
+                        Rubro Comercial
+                    </label>
+                    <input type="text" id="bulk_rubro" name="rubro" required
+                           placeholder="Ej: Depilación láser, Talleres mecánicos, Veterinarias..."
+                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-red-500 transition">
+                </div>
+
+                <!-- Campo Alcance / Zona -->
+                <div class="md:col-span-1">
+                    <label for="bulk_zona" class="block text-sm font-semibold text-slate-300 mb-2">
+                        Alcance / Zona
+                    </label>
+                    <select id="bulk_zona" name="zona"
+                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500 transition cursor-pointer">
+                        <option value="toda_argentina">🇦🇷 Toda Argentina (Nacional - ~250 zonas)</option>
+                        <option value="caba" selected>🏙️ CABA (Todos los 48 barrios)</option>
+                        <option value="gba">🌆 Gran Buenos Aires (35 municipios)</option>
+                        <option value="santa_fe">🌾 Provincia de Santa Fe (Rosario, Santa Fe Cap. y ciudades)</option>
+                        <option value="cordoba">⛰️ Provincia de Córdoba (Capital y ciudades)</option>
+                        <option value="mendoza">🍷 Provincia de Mendoza</option>
+                        <option value="tucuman">🍋 Provincia de Tucumán</option>
+                        <option value="bsas_interior">🌊 Buenos Aires Interior (Mar del Plata, La Plata, Bahía Blanca...)</option>
+                    </select>
+                </div>
+
+                <!-- Campo Límite de Seguridad -->
+                <div class="md:col-span-1">
+                    <label for="bulk_limite" class="block text-sm font-semibold text-slate-300 mb-2">
+                        Límite de Seguridad
+                    </label>
+                    <select id="bulk_limite" name="limite"
+                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500 transition cursor-pointer">
+                        <option value="500">500 comercios</option>
+                        <option value="1000" selected>1.000 comercios (Recomendado / Default)</option>
+                        <option value="2500">2.500 comercios</option>
+                        <option value="0">Sin límite de comercios</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Filtro Web -->
+            <div class="flex items-center gap-3 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+                <input type="checkbox" id="bulk_solo_sin_web" name="solo_sin_web" value="true" checked
+                       class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-red-600 focus:ring-red-500 cursor-pointer">
+                <label for="bulk_solo_sin_web" class="text-sm font-medium text-slate-300 cursor-pointer select-none">
+                    Solo comercios sin web o solo con redes sociales
+                </label>
+            </div>
+
+            <!-- Botón de Acción -->
+            <div class="flex items-center gap-4">
+                <button type="submit" id="btn-start-bulk"
+                        class="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold py-3.5 px-8 rounded-xl transition shadow-lg shadow-red-500/25 flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-rocket"></i>
+                    <span>Iniciar Barrido Automático</span>
+                </button>
+            </div>
+        </form>
+
+        <!-- Panel de Progreso en Vivo -->
+        <div id="bulk-progress-panel" class="hidden mt-8 pt-8 border-t border-slate-800 space-y-6">
+            <!-- Barra de Progreso y Porcentaje -->
+            <div class="space-y-2">
+                <div class="flex justify-between items-center text-xs font-semibold text-slate-300">
+                    <span class="flex items-center gap-2">
+                        <i class="fas fa-circle-notch fa-spin text-red-400" id="bulk-progress-spinner"></i>
+                        <span id="bulk-progress-label">Barrido en curso...</span>
+                    </span>
+                    <span id="bulk-progress-percent" class="font-extrabold text-red-400 text-sm">0%</span>
+                </div>
+                <div class="w-full bg-slate-900 rounded-full h-3.5 overflow-hidden border border-slate-800 p-0.5 shadow-inner">
+                    <div id="bulk-progress-bar"
+                         class="bg-red-600 transition-all duration-300 h-full rounded-full shadow-sm"
+                         style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <!-- Grid de 4 Métricas en Tiempo Real -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- 1. Zona Actual -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider">Zona Actual</span>
+                        <i class="fas fa-location-dot text-red-400 text-sm"></i>
+                    </div>
+                    <p id="bulk-stat-zona" class="text-sm font-bold text-white truncate" title="Iniciando...">
+                        Iniciando...
+                    </p>
+                </div>
+
+                <!-- 2. Prospectos Encontrados -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider">Prospectos Encontrados</span>
+                        <i class="fas fa-users text-blue-400 text-sm"></i>
+                    </div>
+                    <p id="bulk-stat-leads" class="text-2xl font-black text-white">
+                        0
+                    </p>
+                </div>
+
+                <!-- 3. Consumo Estimado de Google API -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider">Consumo Google API</span>
+                        <i class="fas fa-dollar-sign text-emerald-400 text-sm"></i>
+                    </div>
+                    <p id="bulk-stat-cost" class="text-sm font-bold text-emerald-400 truncate" title="~$0.00 USD (crédito gratuito)">
+                        ~$0.00 USD (crédito gratuito)
+                    </p>
+                </div>
+
+                <!-- 4. Estado -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider">Estado</span>
+                        <i class="fas fa-wave-square text-amber-400 text-sm"></i>
+                    </div>
+                    <div id="bulk-stat-status" class="flex items-center">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            En progreso...
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Acciones de Control & Descarga -->
+            <div class="flex flex-wrap items-center gap-3 pt-2">
+                <!-- Botón Detener y Guardar -->
+                <button type="button" id="btn-stop-bulk"
+                        class="bg-slate-800 hover:bg-red-950/40 border border-red-500/30 text-red-300 hover:text-red-200 font-bold py-2.5 px-5 rounded-xl transition text-sm flex items-center gap-2">
+                    <i class="fas fa-stop"></i>
+                    <span>Detener y Guardar</span>
+                </button>
+
+                <!-- Panel de Finalización: Botón Descargar CSV -->
+                <a href="#" id="btn-download-bulk-csv" target="_blank"
+                   class="hidden bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-6 rounded-xl transition text-sm shadow-lg shadow-emerald-600/25 flex items-center gap-2">
+                    <i class="fas fa-download"></i>
+                    <span>Descargar CSV de Leads</span>
+                </a>
+
+                <!-- Botón Nuevo Barrido -->
+                <button type="button" id="btn-reset-bulk"
+                        class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold py-2.5 px-4 rounded-xl transition text-sm flex items-center gap-1.5">
+                    <i class="fas fa-redo"></i>
+                    <span>Nuevo Barrido</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script de Control del Barrido Masivo -->
+    <script>
+        (function() {
+            const form = document.getElementById('bulk-scraper-form');
+            const startBtn = document.getElementById('btn-start-bulk');
+            const progressPanel = document.getElementById('bulk-progress-panel');
+            const progressBar = document.getElementById('bulk-progress-bar');
+            const progressPercent = document.getElementById('bulk-progress-percent');
+            const progressLabel = document.getElementById('bulk-progress-label');
+            const progressSpinner = document.getElementById('bulk-progress-spinner');
+            const statZona = document.getElementById('bulk-stat-zona');
+            const statLeads = document.getElementById('bulk-stat-leads');
+            const statCost = document.getElementById('bulk-stat-cost');
+            const statStatus = document.getElementById('bulk-stat-status');
+            const stopBtn = document.getElementById('btn-stop-bulk');
+            const downloadBtn = document.getElementById('btn-download-bulk-csv');
+            const resetBtn = document.getElementById('btn-reset-bulk');
+
+            let pollingInterval = null;
+
+            function renderStatusBadge(statusText, type) {
+                if (!statStatus) return;
+                let bgClasses = 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+                let dotColor = 'bg-amber-400';
+                let pulseClass = 'animate-pulse';
+
+                if (type === 'success') {
+                    bgClasses = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+                    dotColor = 'bg-emerald-400';
+                    pulseClass = '';
+                } else if (type === 'stopped') {
+                    bgClasses = 'bg-rose-500/20 text-rose-300 border-rose-500/30';
+                    dotColor = 'bg-rose-400';
+                    pulseClass = '';
+                } else if (type === 'error') {
+                    bgClasses = 'bg-red-500/20 text-red-300 border-red-500/30';
+                    dotColor = 'bg-red-400';
+                    pulseClass = '';
+                }
+
+                statStatus.innerHTML = `
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${bgClasses} ${pulseClass}">
+                        <span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span>
+                        ${statusText}
+                    </span>
+                `;
+            }
+
+            function updateUIWithStatus(data) {
+                if (!data) return;
+
+                const status = data.status || 'idle';
+                const leads = data.leads_count ?? data.total_leads ?? data.leads ?? 0;
+                const totalZones = data.total_zones || 0;
+                const currentZoneIdx = data.zone_index || 0;
+                const currentZoneName = data.current_zone || '';
+                
+                // Cálculo del porcentaje
+                let percent = 0;
+                if (typeof data.progress_percent === 'number') {
+                    percent = data.progress_percent;
+                } else if (totalZones > 0) {
+                    percent = Math.round((currentZoneIdx / totalZones) * 100);
+                }
+                percent = Math.min(100, Math.max(0, percent));
+
+                // Formatear texto de zona
+                let zonaText = 'Iniciando...';
+                if (currentZoneName) {
+                    zonaText = totalZones > 0 ? `${currentZoneName} (${currentZoneIdx}/${totalZones})` : currentZoneName;
+                } else if (status === 'completed') {
+                    zonaText = totalZones > 0 ? `Todas completadas (${totalZones}/${totalZones})` : 'Finalizado';
+                }
+
+                // Formatear texto de consumo
+                let costText = '~$0.00 USD (crédito gratuito)';
+                if (data.estimated_cost_str) {
+                    costText = data.estimated_cost_str;
+                } else if (typeof data.estimated_cost === 'number') {
+                    costText = `~$${data.estimated_cost.toFixed(2)} USD (crédito gratuito)`;
+                }
+
+                // URL de descarga
+                const downloadUrl = data.download_url || (data.filename ? `/admin/bulk_scraper/download/${encodeURIComponent(data.filename)}` : '');
+
+                // Actualizar elementos DOM
+                if (progressBar) progressBar.style.width = `${percent}%`;
+                if (progressPercent) progressPercent.textContent = `${percent}%`;
+                if (statZona) {
+                    statZona.textContent = zonaText;
+                    statZona.title = zonaText;
+                }
+                if (statLeads) statLeads.textContent = String(leads);
+                if (statCost) {
+                    statCost.textContent = costText;
+                    statCost.title = costText;
+                }
+
+                if (status === 'running' || status === 'in_progress') {
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (startBtn) {
+                        startBtn.disabled = true;
+                        startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        startBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i><span>Barrido en curso...</span>';
+                    }
+                    if (progressSpinner) progressSpinner.classList.remove('hidden');
+                    if (progressLabel) progressLabel.textContent = 'Barrido en curso...';
+                    if (stopBtn) stopBtn.classList.remove('hidden');
+                    if (downloadBtn) downloadBtn.classList.add('hidden');
+                    if (resetBtn) resetBtn.classList.add('hidden');
+                    renderStatusBadge('En progreso...', 'progress');
+                } else if (status === 'completed') {
+                    stopPolling();
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressBar) progressBar.style.width = '100%';
+                    if (progressPercent) progressPercent.textContent = '100%';
+                    if (progressSpinner) progressSpinner.classList.add('hidden');
+                    if (progressLabel) progressLabel.textContent = '¡Barrido Completado con Éxito!';
+                    if (stopBtn) stopBtn.classList.add('hidden');
+                    if (downloadBtn) {
+                        if (downloadUrl) downloadBtn.href = downloadUrl;
+                        downloadBtn.classList.remove('hidden');
+                    }
+                    if (resetBtn) resetBtn.classList.remove('hidden');
+                    renderStatusBadge('Completado', 'success');
+                } else if (status === 'stopped') {
+                    stopPolling();
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressSpinner) progressSpinner.classList.add('hidden');
+                    if (progressLabel) progressLabel.textContent = 'Barrido detenido por el usuario';
+                    if (stopBtn) stopBtn.classList.add('hidden');
+                    if (downloadBtn) {
+                        if (downloadUrl) downloadBtn.href = downloadUrl;
+                        downloadBtn.classList.remove('hidden');
+                    }
+                    if (resetBtn) resetBtn.classList.remove('hidden');
+                    renderStatusBadge('Detenido', 'stopped');
+                } else if (status === 'error') {
+                    stopPolling();
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressSpinner) progressSpinner.classList.add('hidden');
+                    if (progressLabel) progressLabel.textContent = 'Ocurrió un error en el barrido';
+                    if (stopBtn) stopBtn.classList.add('hidden');
+                    if (resetBtn) resetBtn.classList.remove('hidden');
+                    renderStatusBadge('Error', 'error');
+                }
+            }
+
+            function fetchStatus() {
+                fetch('/admin/bulk_scraper/status')
+                    .then(res => {
+                        if (!res.ok) throw new Error('Status HTTP ' + res.status);
+                        return res.json();
+                    })
+                    .then(data => {
+                        updateUIWithStatus(data);
+                    })
+                    .catch(err => {
+                        // Silencioso en caso de no estar iniciado
+                        console.debug('[BulkScraper] Polling status:', err.message);
+                    });
+            }
+
+            function startPolling() {
+                stopPolling();
+                fetchStatus();
+                pollingInterval = setInterval(fetchStatus, 2000);
+            }
+
+            function stopPolling() {
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+            }
+
+            // Iniciar Barrido
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const rubroInput = document.getElementById('bulk_rubro');
+                    const zonaSelect = document.getElementById('bulk_zona');
+                    const limiteSelect = document.getElementById('bulk_limite');
+                    const soloSinWebCheckbox = document.getElementById('bulk_solo_sin_web');
+
+                    const payload = {
+                        rubro: (rubroInput ? rubroInput.value : '').trim(),
+                        zona: zonaSelect ? zonaSelect.value : 'caba',
+                        limite: limiteSelect ? parseInt(limiteSelect.value, 10) : 1000,
+                        solo_sin_web: soloSinWebCheckbox ? soloSinWebCheckbox.checked : true
+                    };
+
+                    if (!payload.rubro) {
+                        alert('Por favor ingresá un rubro comercial para iniciar el barrido.');
+                        return;
+                    }
+
+                    if (startBtn) {
+                        startBtn.disabled = true;
+                        startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        startBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i><span>Iniciando...</span>';
+                    }
+
+                    // Reset visual inmediato
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressBar) progressBar.style.width = '0%';
+                    if (progressPercent) progressPercent.textContent = '0%';
+                    if (statZona) statZona.textContent = 'Iniciando conexión...';
+                    if (statLeads) statLeads.textContent = '0';
+                    if (statCost) statCost.textContent = '~$0.00 USD (crédito gratuito)';
+                    renderStatusBadge('Iniciando...', 'progress');
+                    if (stopBtn) stopBtn.classList.remove('hidden');
+                    if (downloadBtn) downloadBtn.classList.add('hidden');
+                    if (resetBtn) resetBtn.classList.add('hidden');
+
+                    fetch('/admin/bulk_scraper/start', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success || data.status === 'started' || data.status === 'running') {
+                            startPolling();
+                        } else {
+                            alert('Error al iniciar barrido: ' + (data.error || 'Respuesta inesperada'));
+                            if (startBtn) {
+                                startBtn.disabled = false;
+                                startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                                startBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i><span>Iniciar Barrido Automático</span>';
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        alert('Error de conexión al iniciar el barrido.');
+                        console.error(err);
+                        if (startBtn) {
+                            startBtn.disabled = false;
+                            startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                            startBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i><span>Iniciar Barrido Automático</span>';
+                        }
+                    });
+                });
+            }
+
+            // Detener y Guardar
+            if (stopBtn) {
+                stopBtn.addEventListener('click', function() {
+                    if (!confirm('¿Estás seguro de detener el barrido? Se guardarán en el archivo CSV todos los prospectos obtenidos hasta el momento.')) {
+                        return;
+                    }
+                    stopBtn.disabled = true;
+                    stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Deteniendo...';
+
+                    fetch('/admin/bulk_scraper/stop', {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json' }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        fetchStatus();
+                    })
+                    .catch(err => {
+                        console.error('Error al solicitar detención:', err);
+                        fetchStatus();
+                    })
+                    .finally(() => {
+                        stopBtn.disabled = false;
+                        stopBtn.innerHTML = '<i class="fas fa-stop mr-1"></i><span>Detener y Guardar</span>';
+                    });
+                });
+            }
+
+            // Reiniciar Formulario para Nuevo Barrido
+            if (resetBtn) {
+                resetBtn.addEventListener('click', function() {
+                    stopPolling();
+                    if (progressPanel) progressPanel.classList.add('hidden');
+                    if (startBtn) {
+                        startBtn.disabled = false;
+                        startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        startBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i><span>Iniciar Barrido Automático</span>';
+                    }
+                    if (form) form.reset();
+                });
+            }
+
+            // Auto-restaurar estado si el usuario refresca o vuelve al panel
+            document.addEventListener('DOMContentLoaded', function() {
+                fetchStatus();
+            });
+        })();
+    </script>
+
     <!-- Base de Datos (Maps Scraper) -->
     <div class="glass-card rounded-3xl p-8 mt-6">
         <h2 class="text-xl font-bold mb-6 flex items-center"><i class="fas fa-map-marked-alt text-red-400 mr-3"></i> Base de Datos (Envios Whatsapp)</h2>
