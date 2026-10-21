@@ -885,10 +885,17 @@ def maps_scraper():
     if not query:
         return jsonify({"error": "Falta el término de búsqueda"}), 400
         
+    solo_sin_web = request.form.get('solo_sin_web', 'true').lower() in ['true', '1', 'on']
+
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     if not api_key:
         return jsonify({"error": "No hay GOOGLE_MAPS_API_KEY configurada"}), 500
         
+    SOCIAL_DOMAINS = [
+        "instagram.com", "facebook.com", "fb.com", "fb.me", 
+        "linktr.ee", "tiktok.com", "wa.me", "whatsapp.com"
+    ]
+
     prospectos = []
     
     # Llamada inicial
@@ -910,10 +917,10 @@ def maps_scraper():
             if res2.get("status") == "OK":
                 results.extend(res2.get("results", []))
                 
-        # Buscar detalles de teléfono
+        # Buscar detalles de teléfono y sitio web
         for place in results:
             place_id = place.get("place_id")
-            det_url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&fields=name,formatted_phone_number,formatted_address&key={api_key}"
+            det_url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&fields=name,formatted_phone_number,formatted_address,website&key={api_key}"
             det_res = requests.get(det_url).json()
             
             if det_res.get("status") == "OK":
@@ -924,12 +931,23 @@ def maps_scraper():
                 
                 # Filtrar solo los que tienen teléfono (necesario para Whatsapp)
                 if phone:
-                    prospectos.append([name, phone, address])
+                    raw_website = d.get("website", "").strip()
+                    if not raw_website:
+                        tipo_web = "Sin web"
+                        prospectos.append([name, phone, address, tipo_web])
+                    elif any(dom in raw_website.lower() for dom in SOCIAL_DOMAINS):
+                        tipo_web = f"Redes ({raw_website})"
+                        prospectos.append([name, phone, address, tipo_web])
+                    else:
+                        # Tiene web propia
+                        if not solo_sin_web:
+                            tipo_web = raw_website
+                            prospectos.append([name, phone, address, tipo_web])
                     
         # Generar CSV en memoria
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(['Nombre del Local', 'Teléfono', 'Dirección'])
+        writer.writerow(['Nombre del Local', 'Teléfono', 'Dirección', 'Sitio Web Detectado'])
         writer.writerows(prospectos)
         
         # Devolver como archivo descargable

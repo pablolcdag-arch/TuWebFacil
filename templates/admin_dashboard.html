@@ -611,6 +611,15 @@
                        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500">
             </div>
             
+            <div class="flex items-center gap-2">
+                <input type="hidden" name="solo_sin_web" value="false">
+                <input type="checkbox" name="solo_sin_web" id="solo_sin_web" value="true" checked
+                       class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-red-600 focus:ring-red-500">
+                <label for="solo_sin_web" class="text-sm font-medium text-slate-300">
+                    Solo comercios sin web (o que solo tienen redes sociales)
+                </label>
+            </div>
+
             <button type="submit" onclick="this.innerHTML='<i class=\'fas fa-spinner fa-spin mr-2\'></i> Procesando...'" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-red-500/20">
                 <i class="fas fa-download mr-2"></i> Extraer y Descargar CSV
             </button>

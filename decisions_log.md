@@ -400,3 +400,20 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   5. Se creó la suite automatizada `scripts/utils/test_outbound_campaign.py` (Tests 1 al 5) y se certificó 100% PASS en las 6 suites del proyecto sin regresiones.
 - **Razón:** Cerrar el circuito tecnológico y operativo para la prospección masiva por WhatsApp oficial de Meta, garantizando una experiencia de usuario fluida, protegiendo la reputación del número ante spam mediante opt-outs y alertando al administrador en tiempo real ante prospectos calificados.
 - **Impacto:** Canal Outbound 100% operativo y seguro, listo para ejecutar campañas masivas con alta tasa de respuesta y conversión.
+
+## [21/10/2026] — Filtro Inteligente de Sitios Web en Google Maps Scraper para Prospección Outbound
+- **Decisión:**
+  1. En `app.py`, en el endpoint `POST /admin/maps_scraper`, se implementó la discriminación de prospectos calificados:
+     - Se añadió el campo `website` al llamado a la Google Places Details API (`fields=name,formatted_phone_number,formatted_address,website`).
+     - Se captura el parámetro booleano `solo_sin_web` (con tolerancia a `true`, `1`, `on` vs `false`).
+     - Si el comercio no posee sitio web (`""` o whitespace), se clasifica como `"Sin web"` y se incluye en la prospección.
+     - Si el comercio tiene enlaces a redes sociales (`SOCIAL_DOMAINS`: instagram, facebook, fb.com, fb.me, linktr.ee, tiktok, wa.me, whatsapp.com), se clasifica como `"Redes (<url>)"` y se incluye en la prospección.
+     - Si el comercio cuenta con sitio web propio comercial, se descarta cuando `solo_sin_web=True` (comportamiento por defecto) o se conserva registrando la URL cuando `solo_sin_web=False`.
+     - El archivo CSV exportado incorpora la cuarta columna `Sitio Web Detectado`, preservando inalteradas las primeras 3 columnas (`Nombre del Local`, `Teléfono`, `Dirección`) para garantizar total retrocompatibilidad con los scripts `generate_demos_from_csv.py` y `send_outbound_campaign.py`.
+  2. En `templates/admin_dashboard.html`, en el formulario `#form-maps-scraper`:
+     - Se incorporó un control interactivo con checkbox estilizado en Tailwind CSS (`solo_sin_web`), marcado por defecto (`checked`), acompañado de `<label>` accesible en español rioplatense (*"Solo comercios sin web (o que solo tienen redes sociales)"*).
+     - Se incluyó un input oculto fallback `<input type="hidden" name="solo_sin_web" value="false">` para garantizar el envío determinista del valor booleano en peticiones estándar multipart/form-data.
+  3. En `scripts/utils/test_maps_scraper_filter.py`, se implementó una suite de pruebas automatizadas con mocks de Google Places API (Text Search y Details), validando descarte de webs propias, retención de redes y sin web, inclusión con filtro inactivo, y estructura de encabezados UTF-8 (100% PASS).
+  4. Cero regresiones en `test_outbound_campaign.py`, `test_bulk_demo_generator.py`, `test_price_list_backend.py`, `test_price_list_frontend.py`, `test_day27_flow.py` y `test_paused_flow.py`.
+- **Razón:** Maximizar la tasa de conversión y el retorno de inversión en las campañas de prospección saliente ("Demo Servida en Bandeja"), asegurando que el esfuerzo comercial y los mensajes de WhatsApp se dirijan exclusivamente a comerciantes que realmente carecen de una web profesional o que solo dependen de perfiles en redes sociales.
+- **Impacto:** Embudo comercial altamente enfocado, cero desperdicio de créditos de mensajería y generación automática de listas de leads de alta intención.
