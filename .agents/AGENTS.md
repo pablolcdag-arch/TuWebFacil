@@ -170,8 +170,8 @@ TuWebLista/
 │ ── SCRIPTS ───────────────────────────────────────────────────────
 ├── scripts/
 │   ├── db/                          ← Mantenimiento/inspección de BD (check_*, create_table, list_tables)
-│   ├── ops/                         ← Operaciones VPS: safe_deploy.py (whitelist estricta), view_logs.py,
-│   │                                  instagram_scheduler.py, watchdog.py, upsell_cron.py ...
+│   ├── ops/                         ← Operaciones VPS: safe_deploy.py (whitelist estricta), generate_demos_from_csv.py,
+│   │                                  view_logs.py, instagram_scheduler.py, watchdog.py, upsell_cron.py ...
 │   ├── utils/                       ← QA y simulaciones (qa_suite.py, qa_admin_suite.py, simulate_user.py ...)
 │   └── onboarding_cron.py           ← Mensajes de onboarding día 3 / día 10 (agendamiento no confirmado)
 ├── daily_billing_cron.py            ← Suspende webs con pago fallido > 72 hs (en raíz; agendamiento no confirmado)

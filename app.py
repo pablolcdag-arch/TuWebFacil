@@ -238,12 +238,50 @@ def buscar_foto_unsplash(query, rubro_general, used_urls=None):
     used_urls.add(fallback)
     return fallback
 
+def format_price(val):
+    """
+    Formatea importes como string monetario normalizado argentino:
+    ej: 15000 -> "$15.000", 12000.5 -> "$12.000,50"
+    """
+    if val is None:
+        return "-"
+    val_str = str(val).strip()
+    if not val_str or val_str.lower() in ["-", "nan", "none", "null"]:
+        return "-"
+    if isinstance(val, (int, float)):
+        if isinstance(val, float) and not val.is_integer():
+            main_part = int(val)
+            dec_part = int(round((val - main_part) * 100))
+            formatted_main = f"{main_part:,}".replace(",", ".")
+            return f"${formatted_main},{dec_part:02d}"
+        else:
+            formatted_main = f"{int(val):,}".replace(",", ".")
+            return f"${formatted_main}"
+    cleaned = val_str.replace("$", "").replace("ARS", "").replace("USD", "").strip()
+    if re.match(r'^\d{1,3}(\.\d{3})*,\d{2}$', cleaned) or re.match(r'^\d{1,3}(\.\d{3})*$', cleaned):
+        return f"${cleaned}"
+    try:
+        num = float(cleaned.replace(".", "").replace(",", "."))
+        if num.is_integer():
+            return f"${int(num):,}".replace(",", ".")
+        else:
+            main_part = int(num)
+            dec_part = int(round((num - main_part) * 100))
+            return f"${f'{main_part:,}'.replace(',', '.')},{dec_part:02d}"
+    except Exception:
+        return f"${cleaned}" if not cleaned.startswith("$") else cleaned
+
 def generar_plantilla_dinamica(rubro, titulo, zona, horario):
+    rubro_display = rubro.strip().capitalize() if rubro and str(rubro).strip() else "Servicio"
     plantilla_base = {
         "titulo_web": titulo if titulo else "Mi Negocio",
         "subtitulo": rubro if rubro else "Brindamos soluciones de máxima calidad",
         "paleta_colores": {"primario": "#4f46e5", "secundario": "#6366f1"},
-        "servicios_sugeridos": ["Servicio 1", "Servicio 2", "Servicio 3"],
+        "servicios_sugeridos": [
+            f"{rubro_display} Básico",
+            f"{rubro_display} Estándar",
+            f"{rubro_display} Integral"
+        ],
         "descripciones_servicios": [
             "Describí tu primer servicio principal acá.",
             "Acá va la descripción de tu segundo servicio.",
@@ -253,7 +291,40 @@ def generar_plantilla_dinamica(rubro, titulo, zona, horario):
         "fotos_queries": ["customer service professional", "premium quality service", "fast efficiency work"],
         "horario": horario if horario else "Enviá 'Editar Horarios' por WhatsApp.",
         "ubicacion_detectada": zona if zona else "Enviá 'Editar Ubicación' por WhatsApp.",
-        "galeria": []
+        "galeria": [],
+        "lista_precios": {
+            "titulo": "Precios y Servicios",
+            "columnas_pago": ["Efectivo", "Transferencia", "Tarjeta"],
+            "items": [
+                {
+                    "servicio": f"{rubro_display} Básico",
+                    "precios": {
+                        "efectivo": "$12.000",
+                        "transferencia": "$13.500",
+                        "tarjeta": "$15.000"
+                    },
+                    "descuento": 15
+                },
+                {
+                    "servicio": f"{rubro_display} Estándar",
+                    "precios": {
+                        "efectivo": "$18.000",
+                        "transferencia": "$20.000",
+                        "tarjeta": "$22.000"
+                    },
+                    "descuento": 0
+                },
+                {
+                    "servicio": f"{rubro_display} Integral",
+                    "precios": {
+                        "efectivo": "$25.000",
+                        "transferencia": "$28.000",
+                        "tarjeta": "$30.000"
+                    },
+                    "descuento": 0
+                }
+            ]
+        }
     }
 
     if not GEMINI_API_KEY:
@@ -276,14 +347,49 @@ Genera un JSON estrictamente con la siguiente estructura y datos relevantes para
     "descripciones_servicios": ["Breve descripción vendedora del servicio 1 (máx 15 palabras)", "Breve descripción vendedora del servicio 2", "Breve descripción vendedora del servicio 3"],
     "foto_hero_query": "3 palabras clave en INGLES para buscar una foto de portada perfecta en Unsplash (ej: modern lawyer office)",
     "fotos_queries": ["3 palabras ingles para foto servicio 1", "3 palabras ingles foto servicio 2", "3 palabras ingles foto servicio 3"],
-    "paleta_colores": {{"primario": "#hexcode", "secundario": "#hexcode"}}
+    "paleta_colores": {{"primario": "#hexcode", "secundario": "#hexcode"}},
+    "lista_precios": {{
+        "titulo": "Precios y Servicios",
+        "columnas_pago": ["Efectivo", "Transferencia", "Tarjeta"],
+        "items": [
+            {{
+                "servicio": "Nombre del servicio/producto 1",
+                "precios": {{
+                    "efectivo": "$12.000",
+                    "transferencia": "$13.500",
+                    "tarjeta": "$15.000"
+                }},
+                "descuento": 15
+            }},
+            {{
+                "servicio": "Nombre del servicio/producto 2",
+                "precios": {{
+                    "efectivo": "$18.000",
+                    "transferencia": "$20.000",
+                    "tarjeta": "$22.000"
+                }},
+                "descuento": 0
+            }},
+            {{
+                "servicio": "Nombre del servicio/producto 3",
+                "precios": {{
+                    "efectivo": "$25.000",
+                    "transferencia": "$28.000",
+                    "tarjeta": "$30.000"
+                }},
+                "descuento": 0
+            }}
+        ]
+    }}
 }}
+IMPORTANTE PARA PRECIOS: Los valores deben ser creíbles en pesos argentinos para el rubro "{rubro}", con Efectivo como el valor más conveniente, Transferencia ~10% más y Tarjeta ~20% más. En descuento colocar un número entero (ej: 15 para 15% OFF en el primer item, 0 en los demás).
 Devuelve SOLO el JSON válido, sin formato markdown ni explicaciones adicionales."""
 
         response = model.generate_content(prompt)
         text_resp = response.text.strip()
-        if text_resp.startswith("```json"):
-            text_resp = text_resp.strip("`").replace("json\n", "", 1)
+        if "```" in text_resp:
+            text_resp = re.sub(r'^```(?:json)?\s*', '', text_resp)
+            text_resp = re.sub(r'\s*```$', '', text_resp)
             
         data = json.loads(text_resp)
         
@@ -295,6 +401,46 @@ Devuelve SOLO el JSON válido, sin formato markdown ni explicaciones adicionales
         if "paleta_colores" in data and isinstance(data["paleta_colores"], dict):
             plantilla_base["paleta_colores"] = data["paleta_colores"]
             
+        # Validar y mergear lista_precios
+        if "lista_precios" in data and isinstance(data["lista_precios"], dict):
+            lp = data["lista_precios"]
+            items = lp.get("items", [])
+            if isinstance(items, list) and len(items) > 0:
+                sanitized_items = []
+                for it in items:
+                    if isinstance(it, dict) and "servicio" in it:
+                        precios_raw = it.get("precios", {})
+                        if isinstance(precios_raw, dict):
+                            precios_clean = {
+                                "efectivo": format_price(precios_raw.get("efectivo", "$12.000")),
+                                "transferencia": format_price(precios_raw.get("transferencia", "$13.500")),
+                                "tarjeta": format_price(precios_raw.get("tarjeta", "$15.000"))
+                            }
+                        else:
+                            precios_clean = {"efectivo": "$12.000", "transferencia": "$13.500", "tarjeta": "$15.000"}
+                        desc = it.get("descuento", 0)
+                        try:
+                            desc = int(desc)
+                        except Exception:
+                            desc = 0
+                        sanitized_items.append({
+                            "servicio": str(it["servicio"]).strip(),
+                            "precios": precios_clean,
+                            "descuento": desc
+                        })
+                if sanitized_items:
+                    plantilla_base["lista_precios"] = {
+                        "titulo": lp.get("titulo", "Precios y Servicios"),
+                        "columnas_pago": lp.get("columnas_pago", ["Efectivo", "Transferencia", "Tarjeta"]),
+                        "items": sanitized_items
+                    }
+        else:
+            # Si no devolvió lista_precios pero sí servicios_sugeridos, sincronizar nombres
+            if "servicios_sugeridos" in data and isinstance(data["servicios_sugeridos"], list):
+                for idx, item in enumerate(plantilla_base["lista_precios"]["items"]):
+                    if idx < len(data["servicios_sugeridos"]):
+                        item["servicio"] = data["servicios_sugeridos"][idx]
+
     except Exception as e:
         logging.error(f"Error generando plantilla dinámica con Gemini: {e}")
         

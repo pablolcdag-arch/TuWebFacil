@@ -51,9 +51,11 @@
     </div>
     {% endif %}
     {% if web_status == 'demo' %}
-    <div class="bg-indigo-600 text-white px-4 py-3 text-center text-sm font-semibold tracking-wide relative z-50 shadow-md">
-        ⚠️ Esta web está en modo Demo. 
-        <a href="https://api.whatsapp.com/send?phone={{ bot_phone|replace('+', '') }}&text=quiero%20confirmar%20mi%20web" class="underline ml-2 hover:text-indigo-200">¡Activá tu dominio .com.ar propio por WhatsApp!</a>
+    <div class="bg-indigo-900/90 text-indigo-100 text-xs sm:text-sm py-2.5 px-4 text-center border-b border-indigo-700/50 backdrop-blur-sm sticky top-0 z-[160] shadow-sm">
+        <div class="max-w-5xl mx-auto flex items-center justify-center gap-2 flex-wrap">
+            <span class="inline-flex items-center justify-center bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded font-bold text-[11px] uppercase tracking-wider">Demo Interactiva</span>
+            <span>Muestra preparada para <strong>{{ (client.name if client and client.name else web_content.titulo_web) or 'tu comercio' }}</strong>. Todos los textos, fotos, precios y promociones son 100% personalizables. Podés usarla con esta dirección gratuita o con tu propio dominio <strong>.com.ar</strong> (nosotros nos encargamos de todo el registro) por el <strong>mismo abono mensual de $2.000</strong>.</span>
+        </div>
     </div>
     {% endif %}
 
