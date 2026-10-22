@@ -484,3 +484,12 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   4. En `scripts/utils/test_bulk_maps_scraper.py`, se añadieron pruebas unitarias para certificar la normalización de tildes en `slugify()` y la descarga exitosa tanto por ruta directa como por query parameter.
 - **Razón:** Tras un barrido masivo exitoso de 282 prospectos en los 48 barrios de CABA, al presionar "Descargar CSV de Leads", Cloudflare WAF bloqueó la petición con HTTP 403 debido a la presencia de caracteres no-ASCII (`depilación_láser`) y extensión `.csv` directa en el path de la URI.
 - **Impacto:** Descarga fluida, inmediata y transparente de prospectos comerciales desde el panel de control, 100% inmune a bloqueos por WAF o proxies perimetrales.
+
+## [22/10/2026] — Historial de Archivos de Prospectos Descargables en el Panel Admin
+- **Decisión:**
+  1. En `app.py`, se implementó el endpoint `GET /admin/bulk_scraper/files` bajo sesión de administrador, el cual escanea la carpeta `leads/` y retorna una lista estructurada con todos los archivos `.csv` disponibles en el servidor, incluyendo metadatos como tamaño en KB, cantidad estimada de leads (descontando encabezado), fecha de modificación y URL de descarga por query parameter (`/admin/bulk_scraper/download?file=...`).
+  2. En `templates/admin_dashboard.html`, se incorporó una sub-sección visual persistente en la tarjeta de Barrido Masivo ("Archivos de Prospectos Descargables"), con badges de cantidad de leads, tamaño y fecha, y botones directos de descarga para cada archivo generado.
+  3. Se añadió la función reactiva `cargarArchivosGuardados()` que consulta el endpoint en la carga inicial (`DOMContentLoaded`), al completar un barrido masivo con éxito (`status === 'completed'`), o a demanda mediante un botón manual de refresco con spinner.
+  4. En `scripts/utils/test_bulk_maps_scraper.py`, se incluyeron aserciones para validar que el endpoint responda HTTP 200 y entregue los metadatos completos de los archivos presentes.
+- **Razón:** El estado de un barrido masivo se mantenía en la memoria del proceso, lo que provocaba que al recargar la página o reiniciar los workers de Gunicorn se ocultara el botón de descarga del CSV.
+- **Impacto:** Persistencia total y acceso permanente a cualquier lote de prospectos generado en el servidor, permitiendo descargarlos en cualquier momento desde cualquier navegador o dispositivo.

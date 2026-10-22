@@ -365,11 +365,28 @@ def test_flask_admin_bulk_scraper_endpoints():
         r_notfound = client.get("/admin/bulk_scraper/download/inexistente_123.csv")
         assert r_notfound.status_code == 404
 
+        # 4.7 GET /admin/bulk_scraper/files
+        r_files = client.get("/admin/bulk_scraper/files")
+        assert r_files.status_code == 200
+        files_data = r_files.get_json()
+        assert "files" in files_data
+        assert isinstance(files_data["files"], list)
+        
+        # Verificar que test_download_file.csv figura en la lista con sus metadatos
+        nombres_archivos = [f["filename"] for f in files_data["files"]]
+        assert test_csv_name in nombres_archivos, f"{test_csv_name} no encontrado en /admin/bulk_scraper/files"
+        
+        file_entry = next(f for f in files_data["files"] if f["filename"] == test_csv_name)
+        assert file_entry["leads_count"] == 1
+        assert "size_kb" in file_entry
+        assert "created_at" in file_entry
+        assert file_entry["download_url"] == f"/admin/bulk_scraper/download?file={test_csv_name}"
+
     finally:
         if os.path.exists(test_csv_path):
             os.remove(test_csv_path)
 
-    print("✅ TEST 4 PASADO: Endpoints de presets, start, status, stop y download certificados con sesión de admin.")
+    print("✅ TEST 4 PASADO: Endpoints de presets, start, status, stop, download y files certificados con sesión de admin.")
 
 def main():
     print("\n" + "="*70)

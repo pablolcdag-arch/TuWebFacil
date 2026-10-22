@@ -772,6 +772,33 @@
                 </button>
             </div>
         </div>
+
+        <!-- Sub-sección: Archivos de Prospectos Descargables (Historial) -->
+        <div class="mt-8 pt-8 border-t border-slate-800">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div>
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <span>📁</span>
+                        <span>Archivos de Prospectos Descargables</span>
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Historial de extracciones guardadas en el servidor
+                    </p>
+                </div>
+                <button type="button" id="btn-refresh-bulk-files"
+                        class="text-xs text-slate-400 hover:text-white bg-slate-900 border border-slate-800 hover:border-slate-700 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer">
+                    <i class="fas fa-sync-alt text-xs"></i>
+                    <span>Actualizar</span>
+                </button>
+            </div>
+
+            <!-- Contenedor con id="bulk-saved-files-list" -->
+            <div id="bulk-saved-files-list" class="space-y-2">
+                <div class="text-center py-6 text-slate-500 text-sm">
+                    <i class="fas fa-spinner fa-spin text-red-400 mr-2"></i> Cargando archivos guardados...
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Script de Control del Barrido Masivo -->
@@ -904,6 +931,7 @@
                     }
                     if (resetBtn) resetBtn.classList.remove('hidden');
                     renderStatusBadge('Completado', 'success');
+                    cargarArchivosGuardados();
                 } else if (status === 'stopped') {
                     stopPolling();
                     if (progressPanel) progressPanel.classList.remove('hidden');
@@ -917,6 +945,7 @@
                     }
                     if (resetBtn) resetBtn.classList.remove('hidden');
                     renderStatusBadge('Detenido', 'stopped');
+                    cargarArchivosGuardados();
                 } else if (status === 'error') {
                     stopPolling();
                     if (progressPanel) progressPanel.classList.remove('hidden');
@@ -1070,9 +1099,112 @@
                 });
             }
 
+            // Utilidad para escapar texto HTML
+            function escapeHtml(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            // Cargar Historial de Archivos Guardados
+            function cargarArchivosGuardados() {
+                const listContainer = document.getElementById('bulk-saved-files-list');
+                if (!listContainer) return;
+
+                fetch('/admin/bulk_scraper/files')
+                    .then(res => {
+                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                        return res.json();
+                    })
+                    .then(data => {
+                        const files = data.files || [];
+                        if (files.length === 0) {
+                            listContainer.innerHTML = `
+                                <div class="text-center py-8 bg-slate-900/50 border border-slate-800/80 rounded-2xl">
+                                    <i class="fas fa-folder-open text-slate-600 text-3xl mb-2"></i>
+                                    <p class="text-sm font-semibold text-slate-400">No hay archivos guardados aún</p>
+                                    <p class="text-xs text-slate-500 mt-1">Los barridos completados o guardados aparecerán listados aquí automáticamente.</p>
+                                </div>
+                            `;
+                            return;
+                        }
+
+                        let html = '';
+                        files.forEach(file => {
+                            const filename = file.filename || 'leads.csv';
+                            const downloadUrl = file.download_url || `/admin/bulk_scraper/download?file=${encodeURIComponent(filename)}`;
+                            const leadsCount = file.leads_count ?? file.leads ?? 0;
+                            const sizeKb = file.size_kb !== undefined ? `${file.size_kb} KB` : '';
+                            const createdAt = file.created_at || '';
+
+                            html += `
+                                <div class="bg-slate-900/80 border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition shadow-sm">
+                                    <div class="flex items-start sm:items-center gap-3 min-w-0">
+                                        <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                                            <i class="fas fa-file-csv text-emerald-400 text-lg"></i>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="text-sm font-bold text-white truncate" title="${escapeHtml(filename)}">
+                                                ${escapeHtml(filename)}
+                                            </p>
+                                            <div class="flex items-center gap-2 text-xs text-slate-400 mt-1 flex-wrap">
+                                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
+                                                    <i class="fas fa-users text-[10px]"></i> ${leadsCount} leads
+                                                </span>
+                                                ${sizeKb ? `
+                                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-medium">
+                                                    <i class="fas fa-database text-[10px]"></i> ${sizeKb}
+                                                </span>` : ''}
+                                                ${createdAt ? `
+                                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700 font-medium">
+                                                    <i class="fas fa-clock text-[10px]"></i> ${createdAt}
+                                                </span>` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="shrink-0 flex items-center justify-end">
+                                        <a href="${downloadUrl}" download="${escapeHtml(filename)}"
+                                           class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2 px-4 rounded-lg transition shadow-md shadow-emerald-600/20 cursor-pointer">
+                                            <i class="fas fa-download"></i>
+                                            <span>Descargar</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        listContainer.innerHTML = html;
+                    })
+                    .catch(err => {
+                        console.error('Error cargando archivos de leads:', err);
+                        listContainer.innerHTML = `
+                            <div class="text-center py-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-300 text-xs">
+                                <i class="fas fa-exclamation-triangle mr-1"></i> No se pudo cargar el historial de archivos.
+                            </div>
+                        `;
+                    });
+            }
+
+            // Botón manual de refresco de archivos
+            const refreshFilesBtn = document.getElementById('btn-refresh-bulk-files');
+            if (refreshFilesBtn) {
+                refreshFilesBtn.addEventListener('click', function() {
+                    const icon = refreshFilesBtn.querySelector('i');
+                    if (icon) icon.classList.add('fa-spin');
+                    cargarArchivosGuardados();
+                    setTimeout(() => {
+                        if (icon) icon.classList.remove('fa-spin');
+                    }, 600);
+                });
+            }
+
             // Auto-restaurar estado si el usuario refresca o vuelve al panel
             document.addEventListener('DOMContentLoaded', function() {
                 fetchStatus();
+                cargarArchivosGuardados();
             });
         })();
     </script>

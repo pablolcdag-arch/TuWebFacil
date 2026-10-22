@@ -1186,6 +1186,45 @@ def bulk_scraper_download(filename=None):
             
     return send_from_directory(leads_dir, os.path.basename(file_path), as_attachment=True, download_name=safe_filename)
 
+@app.route('/admin/bulk_scraper/files', methods=['GET'])
+def bulk_scraper_files():
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+        
+    leads_dir = os.path.join(os.getcwd(), "leads")
+    if not os.path.exists(leads_dir):
+        return jsonify({"files": []}), 200
+        
+    archivos = []
+    try:
+        for f in os.listdir(leads_dir):
+            if f.endswith('.csv') and not f.startswith('.'):
+                file_path = os.path.join(leads_dir, f)
+                stat = os.stat(file_path)
+                
+                # Estimar cantidad de filas (leads)
+                filas_count = 0
+                try:
+                    with open(file_path, mode='r', encoding='utf-8', errors='ignore') as fl:
+                        filas_count = max(0, sum(1 for _ in fl) - 1)
+                except Exception:
+                    filas_count = 0
+
+                archivos.append({
+                    "filename": f,
+                    "size_kb": round(stat.st_size / 1024, 1),
+                    "leads_count": filas_count,
+                    "created_at": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"),
+                    "download_url": f"/admin/bulk_scraper/download?file={f}"
+                })
+        # Ordenar por fecha de modificación más reciente primero
+        archivos.sort(key=lambda x: x["filename"], reverse=True)
+    except Exception as e:
+        logging.error(f"Error listando archivos de leads: {e}")
+        return jsonify({"error": str(e)}), 500
+        
+    return jsonify({"files": archivos}), 200
+
 @app.route('/admin/view_receipt/<pid>')
 def view_receipt(pid):
     if not session.get('admin_logged_in'): return redirect(url_for('admin_login'))
