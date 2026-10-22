@@ -758,7 +758,7 @@
                 </button>
 
                 <!-- Panel de Finalización: Botón Descargar CSV -->
-                <a href="#" id="btn-download-bulk-csv" target="_blank"
+                <a href="#" id="btn-download-bulk-csv" download
                    class="hidden bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-6 rounded-xl transition text-sm shadow-lg shadow-emerald-600/25 flex items-center gap-2">
                     <i class="fas fa-download"></i>
                     <span>Descargar CSV de Leads</span>
@@ -789,7 +789,7 @@
             const statCost = document.getElementById('bulk-stat-cost');
             const statStatus = document.getElementById('bulk-stat-status');
             const stopBtn = document.getElementById('btn-stop-bulk');
-            const downloadBtn = document.getElementById('btn-download-bulk-csv');
+            const downloadBtn = document.getElementById('btn-download-bulk-csv') || document.getElementById('bulk-download-btn');
             const resetBtn = document.getElementById('btn-reset-bulk');
 
             let pollingInterval = null;
@@ -859,9 +859,9 @@
                     costText = `~$${parseFloat(rawCost || 0).toFixed(2)} USD (crédito gratuito)`;
                 }
 
-                // URL de descarga
+                // URL de descarga compatible con Cloudflare WAF
                 const filename = data.filename || data.csv_filename || '';
-                const downloadUrl = data.download_url || (filename ? `/admin/bulk_scraper/download/${encodeURIComponent(filename)}` : '');
+                const downloadUrl = data.download_url || (filename ? `/admin/bulk_scraper/download?file=${encodeURIComponent(filename)}` : '');
 
                 // Actualizar elementos DOM
                 if (progressBar) progressBar.style.width = `${percent}%`;
@@ -899,6 +899,7 @@
                     if (stopBtn) stopBtn.classList.add('hidden');
                     if (downloadBtn) {
                         if (downloadUrl) downloadBtn.href = downloadUrl;
+                        if (filename) downloadBtn.setAttribute('download', filename);
                         downloadBtn.classList.remove('hidden');
                     }
                     if (resetBtn) resetBtn.classList.remove('hidden');
@@ -911,6 +912,7 @@
                     if (stopBtn) stopBtn.classList.add('hidden');
                     if (downloadBtn) {
                         if (downloadUrl) downloadBtn.href = downloadUrl;
+                        if (filename) downloadBtn.setAttribute('download', filename);
                         downloadBtn.classList.remove('hidden');
                     }
                     if (resetBtn) resetBtn.classList.remove('hidden');

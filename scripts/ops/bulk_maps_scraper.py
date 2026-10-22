@@ -20,6 +20,7 @@ import uuid
 import logging
 import argparse
 import threading
+import unicodedata
 from datetime import datetime
 from typing import List, Dict, Set, Optional
 import requests
@@ -72,8 +73,9 @@ def normalizar_telefono(phone_raw: str) -> str:
     return digits
 
 def slugify(text: str) -> str:
-    """Convierte texto en un slug seguro para nombres de archivo."""
-    text = re.sub(r'[^\w\s-]', '', str(text).lower()).strip()
+    """Convierte texto en un slug seguro ASCII para nombres de archivo."""
+    text = unicodedata.normalize('NFKD', str(text)).encode('ascii', 'ignore').decode('ascii')
+    text = re.sub(r'[^\w\s-]', '', text.lower()).strip()
     return re.sub(r'[-\s]+', '_', text)
 
 class BulkMapsScraper:
@@ -164,7 +166,7 @@ class BulkMapsScraper:
             # Archivo
             "csv_filename": self.csv_filename,
             "filename": self.csv_filename,
-            "download_url": f"/admin/bulk_scraper/download/{self.csv_filename}" if self.csv_filename else "",
+            "download_url": f"/admin/bulk_scraper/download?file={self.csv_filename}" if self.csv_filename else "",
             # Control y errores
             "error": self.error_message,
             "started_at": self.started_at,

@@ -27,6 +27,7 @@ from scripts.ops import bulk_maps_scraper
 from scripts.ops.bulk_maps_scraper import (
     BulkMapsScraper,
     normalizar_telefono,
+    slugify,
     COST_PER_TEXT_SEARCH,
     COST_PER_PLACE_DETAILS
 )
@@ -88,6 +89,11 @@ def test_arg_geo_catalog_structure():
     assert "cordoba" in preset_ids
     assert "santa_fe" in preset_ids
 
+    # 7. Sanitización ASCII de slugs
+    assert slugify("Depilación Definitiva") == "depilacion_definitiva"
+    assert slugify("Córdoba Capital") == "cordoba_capital"
+    assert slugify("Tucumán & Estética") == "tucuman_estetica"
+
     print("✅ TEST 1 PASADO: Catálogo de Argentina estructurado con 48 barrios de CABA, GBA y macro-zona federal.")
 
 def test_bulk_scraper_stop_loss_and_costs():
@@ -146,7 +152,7 @@ def test_bulk_scraper_stop_loss_and_costs():
         assert status["total_leads"] == 3
         assert status["leads"] == 3
         assert status["progress_percent"] == 100
-        assert "download_url" in status and status["download_url"].startswith("/admin/bulk_scraper/download/")
+        assert "download_url" in status and status["download_url"].startswith("/admin/bulk_scraper/download?file=")
         assert status["estimated_cost"] == status["consumo_usd"]
         assert "estimated_cost_str" in status
         assert scraper.comercios_encontrados == 3
@@ -334,15 +340,27 @@ def test_flask_admin_bulk_scraper_endpoints():
             f_dl.write("Nombre del Local,Teléfono,Dirección,Sitio Web Detectado,Zona\n")
             f_dl.write("Test Spa,5491111223344,Av. Belgrano 100,Sin web,Balvanera\n")
 
-        # Descarga permitida
-        r_dl = client.get(f"/admin/bulk_scraper/download/{test_csv_name}")
-        assert r_dl.status_code == 200
-        assert "text/csv" in r_dl.content_type
-        assert "Test Spa" in r_dl.data.decode("utf-8")
+        # Descarga permitida vía ruta directa y vía query param
+        r_dl_path = client.get(f"/admin/bulk_scraper/download/{test_csv_name}")
+        assert r_dl_path.status_code == 200
+        assert "text/csv" in r_dl_path.content_type
+        assert "Test Spa" in r_dl_path.data.decode("utf-8")
+
+        r_dl_query = client.get(f"/admin/bulk_scraper/download?file={test_csv_name}")
+        assert r_dl_query.status_code == 200
+        assert "text/csv" in r_dl_query.content_type
+        assert "Test Spa" in r_dl_query.data.decode("utf-8")
+
+        r_dl_filename_param = client.get(f"/admin/bulk_scraper/download?filename={test_csv_name}")
+        assert r_dl_filename_param.status_code == 200
+
+        # Petición sin archivo
+        r_no_file = client.get("/admin/bulk_scraper/download")
+        assert r_no_file.status_code == 400
 
         # Intento de path traversal o archivo no .csv -> 400 o 404
         r_invalid = client.get("/admin/bulk_scraper/download/invalido.txt")
-        assert r_invalid.status_code == 400
+        assert r_invalid.status_code in [400, 404]
 
         r_notfound = client.get("/admin/bulk_scraper/download/inexistente_123.csv")
         assert r_notfound.status_code == 404

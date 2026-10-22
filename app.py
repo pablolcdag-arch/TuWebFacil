@@ -1156,21 +1156,35 @@ def bulk_scraper_stop():
         return jsonify({"error": "No autorizado"}), 403
     return jsonify(stop_scraper_task()), 200
 
-@app.route('/admin/bulk_scraper/download/<filename>', methods=['GET'])
-def bulk_scraper_download(filename):
+@app.route('/admin/bulk_scraper/download', methods=['GET'])
+@app.route('/admin/bulk_scraper/download/<path:filename>', methods=['GET'])
+def bulk_scraper_download(filename=None):
     if not session.get('admin_logged_in'): 
         return jsonify({"error": "No autorizado"}), 403
     
-    safe_filename = secure_filename(filename)
-    if not safe_filename.endswith('.csv'):
-        return jsonify({"error": "Formato de archivo inválido"}), 400
+    raw_filename = filename or request.args.get('file') or request.args.get('filename')
+    if not raw_filename:
+        return jsonify({"error": "Nombre de archivo no especificado"}), 400
         
     leads_dir = os.path.join(os.getcwd(), "leads")
-    file_path = os.path.join(leads_dir, safe_filename)
-    if not os.path.exists(file_path):
-        return jsonify({"error": "Archivo no encontrado"}), 404
+    
+    # 1. Probar con nombre sanitizado seguro
+    safe_filename = secure_filename(raw_filename)
+    if not safe_filename.endswith('.csv'):
+        safe_filename += '.csv'
         
-    return send_from_directory(leads_dir, safe_filename, as_attachment=True)
+    file_path = os.path.join(leads_dir, safe_filename)
+    
+    # 2. Si no existe, probar con el nombre original en caso de tildes previas
+    if not os.path.exists(file_path):
+        direct_path = os.path.join(leads_dir, os.path.basename(raw_filename))
+        if os.path.exists(direct_path) and direct_path.endswith('.csv'):
+            file_path = direct_path
+            safe_filename = os.path.basename(direct_path)
+        else:
+            return jsonify({"error": "Archivo no encontrado"}), 404
+            
+    return send_from_directory(leads_dir, os.path.basename(file_path), as_attachment=True, download_name=safe_filename)
 
 @app.route('/admin/view_receipt/<pid>')
 def view_receipt(pid):
