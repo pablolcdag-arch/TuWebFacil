@@ -493,3 +493,17 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   4. En `scripts/utils/test_bulk_maps_scraper.py`, se incluyeron aserciones para validar que el endpoint responda HTTP 200 y entregue los metadatos completos de los archivos presentes.
 - **Razón:** El estado de un barrido masivo se mantenía en la memoria del proceso, lo que provocaba que al recargar la página o reiniciar los workers de Gunicorn se ocultara el botón de descarga del CSV.
 - **Impacto:** Persistencia total y acceso permanente a cualquier lote de prospectos generado en el servidor, permitiendo descargarlos en cualquier momento desde cualquier navegador o dispositivo.
+
+## [22/10/2026] — Módulo de Campaña Outbound de WhatsApp y Optimización de Demos Abandonadas
+- **Decisión:**
+  1. En `scripts/ops/send_outbound_campaign.py`, se implementó un extractor inteligente de localidades (`extraer_localidad`) que incorpora el catálogo `CP_CABA_BARRIOS` (29 códigos postales mapeados a barrios reales de CABA: `Villa Devoto`, `Palermo`, `Villa del Parque`, `Caballito`, etc.) y extracción limpia de ciudades del interior (`Tandil`, `Rafaela`, etc.) eliminando códigos postales y sufijos genéricos de país o provincia. La variable `{{2}}` de la plantilla de WhatsApp ahora se humaniza e hiper-localiza con total naturalidad.
+  2. En `scripts/ops/send_outbound_campaign.py` y `app.py`, se desarrolló el gestor asíncrono singleton `CampaignTask` y los endpoints de control bajo sesión de administrador:
+     - `POST /admin/campaign/start`: Inicia la campaña en segundo plano con control de archivo, límite, pacing y simulación (Dry-Run). Control de concurrencia con HTTP 409 Conflict ante tareas en curso.
+     - `GET /admin/campaign/status`: Telemetría en vivo (estado, progreso, métricas de enviados/opt-out/errores, contacto actual y logs de consola).
+     - `POST /admin/campaign/stop`: Detención reactiva limpia durante el pacing entre envíos.
+  3. En `templates/admin_dashboard.html`:
+     - Se construyó la tarjeta interactiva **"🚀 Campaña Outbound de WhatsApp (Demo Servida en Bandeja)"** con selector de archivo dinámico, controles de seguridad (Dry-Run activo por defecto, delay de 15s, límite de 20 por defecto), barra de progreso y consola oscura hacker con auto-scroll y resaltado de estados.
+     - Se colapsó por defecto la sección de **"Demos Abandonadas"** mediante un acordeón interactivo con contador (`{{ abandoned_demos|length }}`), y en `app.py` se limitó el listado del backend a las 6 más recientes, despejando la pantalla principal del panel y evitando la sobrecarga del DOM.
+  4. En `scripts/utils/test_outbound_campaign.py`, se expandió la suite a 7 tests certificados cubriendo la resolución de barrios porteños, ciudades del interior, concurrencia, seguridad de endpoints y exclusiones de opt-out.
+- **Razón:** Proveer al administrador control total y autónomo para ejecutar y monitorear campañas outbound de WhatsApp directamente desde la web, con hiper-personalización barrial y sin sobrecargar la interfaz principal con cuadrículas masivas de demos inactivas.
+- **Impacto:** Experiencia de administración impecable, personalización persuasiva de máxima conversión en los mensajes y despacho seguro de prospección en un solo clic.

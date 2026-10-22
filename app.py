@@ -24,6 +24,11 @@ from scripts.ops.bulk_maps_scraper import (
     get_scraper_status,
     get_current_task
 )
+from scripts.ops.send_outbound_campaign import (
+    start_campaign_task,
+    stop_campaign_task,
+    get_campaign_status
+)
 
 # Configuración de Logging
 logging.basicConfig(
@@ -885,8 +890,9 @@ def admin_dashboard():
         abandoned_res = supabase.table("clients").select("id, phone, business_type, created_at").in_("id", demo_client_ids).execute()
         if abandoned_res.data:
             abandoned_demos = abandoned_res.data
-            # Sort by created_at desc
+            # Sort by created_at desc y limitar a las 6 más recientes para evitar sobrecarga del DOM
             abandoned_demos.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            abandoned_demos = abandoned_demos[:6]
             
     # Obtener Webs Publicadas
     pub_res = supabase.table("websites").select("id, custom_domain, subdomain, created_at, clients(phone)").eq("status", "published").order("created_at", desc=True).execute()
@@ -1224,6 +1230,60 @@ def bulk_scraper_files():
         return jsonify({"error": str(e)}), 500
         
     return jsonify({"files": archivos}), 200
+
+# ==============================================================================
+# Endpoints de Control de Campaña Outbound
+# ==============================================================================
+@app.route('/admin/campaign/start', methods=['POST'])
+def campaign_start():
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+    
+    data = request.get_json(silent=True) or request.form
+    filename = data.get('filename')
+    if not filename:
+        return jsonify({"error": "Falta el campo 'filename'"}), 400
+        
+    try:
+        limit = int(data.get('limit', 20))
+    except (ValueError, TypeError):
+        limit = 20
+        
+    try:
+        delay = int(data.get('delay', 15))
+    except (ValueError, TypeError):
+        delay = 15
+        
+    dry_run_val = data.get('dry_run', False)
+    if isinstance(dry_run_val, str):
+        dry_run = dry_run_val.lower() in ['true', '1', 'on']
+    else:
+        dry_run = bool(dry_run_val)
+        
+    res = start_campaign_task(
+        filename=filename,
+        limit=limit,
+        delay=delay,
+        dry_run=dry_run
+    )
+    if res.get("status") == "already_running":
+        return jsonify(res), 409
+    if res.get("status") == "error":
+        return jsonify(res), 404
+        
+    return jsonify(res), 200
+
+@app.route('/admin/campaign/status', methods=['GET'])
+def campaign_status():
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+    return jsonify(get_campaign_status()), 200
+
+@app.route('/admin/campaign/stop', methods=['POST'])
+def campaign_stop():
+    if not session.get('admin_logged_in'): 
+        return jsonify({"error": "No autorizado"}), 403
+    return jsonify(stop_campaign_task()), 200
 
 @app.route('/admin/view_receipt/<pid>')
 def view_receipt(pid):

@@ -13,6 +13,7 @@ import os
 import sys
 import csv
 import json
+import time
 import sqlite3
 import tempfile
 import unittest
@@ -314,6 +315,152 @@ def test_send_outbound_campaign_script():
 
     print("✅ TEST 5 PASADO: send_outbound_campaign.py excluye opt-outs, evita duplicados y registra timestamps.")
 
+def test_extraer_localidad_comprehensive():
+    banner("6. Extractor inteligente de localidades y mapeo de códigos postales")
+
+    # a) Si fila tiene columna 'Zona' o 'zona'
+    f1 = {"Zona": "Villa Devoto, CABA", "Dirección": "Habana 3000"}
+    assert extraer_localidad(f1) == "Villa Devoto", f"Falla Zona con sufijo CABA: {extraer_localidad(f1)}"
+
+    f2 = {"zona": "Palermo", "Dirección": "Gorriti 4500"}
+    assert extraer_localidad(f2) == "Palermo", f"Falla zona minúscula: {extraer_localidad(f2)}"
+
+    f3 = {"Zona": "Tandil, Buenos Aires", "Dirección": "Pinto 500"}
+    assert extraer_localidad(f3) == "Tandil", f"Falla Zona interior: {extraer_localidad(f3)}"
+
+    # Si Zona es genérica ('CABA'), debe recurrir a la dirección
+    f_gen = {"Zona": "CABA", "Dirección": "Av. Cabildo 2500, Belgrano, CABA"}
+    assert extraer_localidad(f_gen) == "Belgrano", f"Zona genérica debe recurrir a dirección: {extraer_localidad(f_gen)}"
+
+    # b) Detección de CP de CABA en dirección
+    d_cp1 = "Av. Triunvirato 4500, C1431 CABA"
+    assert extraer_localidad(direccion=d_cp1) == "Villa Urquiza", f"Falla CP C1431: {extraer_localidad(direccion=d_cp1)}"
+
+    d_cp2 = "Calle Cuenca 3000, CP 1417, CABA"
+    assert extraer_localidad(direccion=d_cp2) == "Villa del Parque", f"Falla CP 1417: {extraer_localidad(direccion=d_cp2)}"
+
+    d_cp3 = "Av. Santa Fe 3200, 1425 CABA"
+    assert extraer_localidad(direccion=d_cp3) == "Palermo", f"Falla CP 1425: {extraer_localidad(direccion=d_cp3)}"
+
+    d_cp4 = "Av. San Martín 1500, C1416 CABA"
+    assert extraer_localidad(direccion=d_cp4) == "La Paternal", f"Falla CP 1416: {extraer_localidad(direccion=d_cp4)}"
+
+    # c) Ciudades del interior sin CP
+    d_int1 = "Calle 123, Tandil, Prov. de Buenos Aires, Argentina"
+    assert extraer_localidad(direccion=d_int1) == "Tandil", f"Falla Tandil: {extraer_localidad(direccion=d_int1)}"
+
+    d_int2 = "Bv. Lehmann 450, Rafaela, Santa Fe, Argentina"
+    assert extraer_localidad(direccion=d_int2) == "Rafaela", f"Falla Rafaela: {extraer_localidad(direccion=d_int2)}"
+
+    d_int3 = "Rivadavia 5678, Haedo"
+    assert extraer_localidad(direccion=d_int3) == "Haedo", f"Falla Haedo: {extraer_localidad(direccion=d_int3)}"
+
+    # d) Fallback inteligente
+    d_ba = "Av. Corrientes 1234, CABA"
+    assert extraer_localidad(direccion=d_ba) == "Buenos Aires", f"Falla fallback Buenos Aires: {extraer_localidad(direccion=d_ba)}"
+
+    d_gen = "Ruta 2 Km 40"
+    assert extraer_localidad(direccion=d_gen) == "tu zona", f"Falla fallback tu zona: {extraer_localidad(direccion=d_gen)}"
+
+    # e) Llamada retrocompatible con un solo string
+    assert extraer_localidad("Av. Santa Fe 1234, Palermo, CABA") == "Palermo"
+    assert extraer_localidad(None, None) == "tu zona"
+    assert extraer_localidad({}, "") == "tu zona"
+
+    print("✅ TEST 6 PASADO: extraer_localidad mapea CPs de CABA, extrae ciudades del interior y aplica fallbacks defensivos.")
+
+def test_campaign_api_endpoints():
+    banner("7. Endpoints de control de campaña en Flask (/admin/campaign/*)")
+
+    from app import app
+    client = app.test_client()
+
+    # 1. Sin autenticación -> 403
+    res_start_unauth = client.post("/admin/campaign/start", json={"filename": "test.csv"})
+    assert res_start_unauth.status_code == 403
+
+    res_status_unauth = client.get("/admin/campaign/status")
+    assert res_status_unauth.status_code == 403
+
+    res_stop_unauth = client.post("/admin/campaign/stop")
+    assert res_stop_unauth.status_code == 403
+
+    # Crear sesión de admin
+    with client.session_transaction() as sess:
+        sess["admin_logged_in"] = True
+
+    # 2. Status inicial -> idle
+    res_status = client.get("/admin/campaign/status")
+    assert res_status.status_code == 200
+    st_data = res_status.get_json()
+    assert st_data["status"] in ["idle", "completed", "stopped"]
+    assert "total" in st_data
+    assert "enviados" in st_data
+    assert "current_contact" in st_data
+    assert "logs" in st_data
+
+    # 3. Start sin filename -> 400
+    res_bad = client.post("/admin/campaign/start", json={})
+    assert res_bad.status_code == 400
+
+    # 4. Start con archivo inexistente -> 404
+    res_not_found = client.post("/admin/campaign/start", json={"filename": "inexistente_12345.csv"})
+    assert res_not_found.status_code == 404
+
+    # 5. Crear archivo CSV de prueba en leads/
+    leads_dir = os.path.join(BASE_DIR, "leads")
+    os.makedirs(leads_dir, exist_ok=True)
+    test_csv_name = "test_campaign_temp.csv"
+    test_csv_path = os.path.join(leads_dir, test_csv_name)
+
+    with open(test_csv_path, mode='w', encoding='utf-8-sig', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Nombre del Local", "Teléfono", "Dirección", "slug"])
+        writer.writerow(["Comercio Test API", "1133334444", "Av. Santa Fe 2000, Palermo, CABA", "comercio-test-api"])
+
+    try:
+        # Start válido con dry_run=True y delay=2
+        res_start = client.post("/admin/campaign/start", json={
+            "filename": test_csv_name,
+            "limit": 5,
+            "delay": 2,
+            "dry_run": True
+        })
+        assert res_start.status_code == 200, f"Error iniciando campaña: {res_start.data}"
+        data_started = res_start.get_json()
+        assert data_started["status"] == "started"
+
+        # 6. Intentar iniciar otra mientras corre -> 409
+        res_conflict = client.post("/admin/campaign/start", json={
+            "filename": test_csv_name
+        })
+        assert res_conflict.status_code == 409
+
+        # 7. Consultar status mientras corre
+        res_running = client.get("/admin/campaign/status")
+        assert res_running.status_code == 200
+        run_data = res_running.get_json()
+        assert run_data["status"] in ["running", "completed"]
+
+        # 8. Detener campaña
+        res_stop = client.post("/admin/campaign/stop")
+        assert res_stop.status_code == 200
+        stop_data = res_stop.get_json()
+        assert stop_data["status"] in ["stopping", "not_running", "completed"]
+
+        # Esperar a que el hilo finalice para limpieza limpia del archivo de prueba
+        for _ in range(20):
+            st = client.get("/admin/campaign/status").get_json()
+            if st.get("status") in ["stopped", "completed", "error"]:
+                break
+            time.sleep(0.1)
+
+    finally:
+        if os.path.exists(test_csv_path):
+            os.remove(test_csv_path)
+
+    print("✅ TEST 7 PASADO: Endpoints /admin/campaign/start, /status y /stop verificados con seguridad de sesión y concurrencia.")
+
 def main():
     print("\n" + "="*70)
     print("🚀 INICIANDO TEST SUITE: CAMPAÑA OUTBOUND & RESPUESTAS FSM")
@@ -324,6 +471,8 @@ def main():
     test_bot_engine_intercept_si_me_interesa()
     test_bot_engine_intercept_no_me_interesa()
     test_send_outbound_campaign_script()
+    test_extraer_localidad_comprehensive()
+    test_campaign_api_endpoints()
 
     print("\n" + "="*70)
     print("🎉 TODOS LOS TESTS DE CAMPAÑA OUTBOUND PASARON (100% OK)")

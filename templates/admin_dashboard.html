@@ -509,97 +509,667 @@
     </div>
 
     <!-- Demos Abandonadas (Retargeting) -->
-    <div class="glass-card rounded-3xl p-8 mt-6">
-        <div class="flex justify-between items-center mb-6">
-            <h2 class="text-xl font-bold flex items-center"><i class="fas fa-ghost text-orange-400 mr-3"></i> Demos Abandonadas (Retargeting)</h2>
-            {% if abandoned_demos %}
-            <div class="flex gap-2">
-                <button onclick="selectAllDemos()" class="text-sm text-slate-400 hover:text-white transition"><i class="fas fa-check-square mr-1"></i> Seleccionar Todos</button>
-                <button onclick="sendSelectedRetargeting()" class="bg-orange-600 hover:bg-orange-500 text-white font-bold py-1 px-3 rounded-lg transition text-sm"><i class="fab fa-whatsapp mr-1"></i> Enviar a Seleccionados</button>
-                <button onclick="deleteSelectedDemos()" class="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded-lg transition text-sm" title="Eliminar Seleccionados"><i class="fas fa-trash-alt"></i></button>
+    <div class="glass-card rounded-3xl p-6 sm:p-8 mt-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <h2 class="text-xl font-bold flex items-center">
+                    <i class="fas fa-ghost text-orange-400 mr-3"></i> Demos Abandonadas (Retargeting)
+                </h2>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                    {{ abandoned_demos|length }}
+                </span>
             </div>
+            <button type="button" id="toggle-abandoned-demos" onclick="toggleAbandonedDemos()"
+                    class="text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 px-4 py-2.5 rounded-xl transition flex items-center gap-2 self-start sm:self-auto cursor-pointer shadow-sm">
+                <i class="fas fa-chevron-down transition-transform duration-300" id="icon-toggle-demos"></i>
+                <span id="text-toggle-demos">Ver Demos Abandonadas ({{ abandoned_demos|length }})</span>
+            </button>
+        </div>
+        
+        <!-- Contenedor colapsable (oculto por defecto) -->
+        <div id="abandoned-demos-content" class="hidden mt-6 pt-6 border-t border-slate-800">
+            {% if abandoned_demos %}
+                <div class="flex justify-end gap-2 mb-4 flex-wrap">
+                    <button onclick="selectAllDemos()" class="text-xs text-slate-400 hover:text-white transition py-1 px-3 bg-slate-900 border border-slate-800 rounded-lg"><i class="fas fa-check-square mr-1"></i> Seleccionar Todos</button>
+                    <button onclick="sendSelectedRetargeting()" class="bg-orange-600 hover:bg-orange-500 text-white font-bold py-1 px-3 rounded-lg transition text-xs"><i class="fab fa-whatsapp mr-1"></i> Enviar a Seleccionados</button>
+                    <button onclick="deleteSelectedDemos()" class="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded-lg transition text-xs" title="Eliminar Seleccionados"><i class="fas fa-trash-alt"></i></button>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for c in abandoned_demos %}
+                    <div class="bg-slate-800/50 rounded-xl p-5 border border-slate-700 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex items-center gap-2">
+                                    <input type="checkbox" class="demo-checkbox w-4 h-4 rounded border-slate-700 bg-slate-900 text-orange-500 focus:ring-orange-500" value="{{ c.id }}">
+                                    <p class="font-bold text-slate-200">{{ c.phone }}</p>
+                                </div>
+                                <span class="px-2 py-1 bg-orange-500/20 text-orange-400 text-[10px] uppercase font-bold rounded-lg">Demo Inactiva</span>
+                            </div>
+                            <p class="text-xs text-slate-400">{{ c.business_type }}</p>
+                            <p class="text-xs text-slate-500 mt-2">Creado: {{ c.created_at[:10] }}</p>
+                        </div>
+                        <button onclick="sendRetargeting('{{ c.id }}')" class="mt-4 w-full bg-orange-600 hover:bg-orange-500 text-white py-2 rounded-lg text-sm font-bold transition flex items-center justify-center">
+                            <i class="fab fa-whatsapp mr-2"></i> Recordatorio
+                        </button>
+                    </div>
+                {% endfor %}
+                </div>
+                
+                <!-- Formulario oculto para eliminar demos -->
+                <form id="deleteDemosForm" method="POST" action="/admin/delete_abandoned_demos" class="hidden">
+                    <input type="hidden" name="client_ids" id="deleteDemosInput">
+                </form>
+            {% else %}
+                <div class="text-center py-8 bg-slate-800/30 rounded-2xl border border-slate-700 border-dashed">
+                    <i class="fas fa-check-circle text-4xl text-slate-600 mb-3"></i>
+                    <p class="text-slate-400 text-sm">Excelente, no hay demos abandonadas por el momento.</p>
+                </div>
             {% endif %}
         </div>
         
-        {% if abandoned_demos %}
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {% for c in abandoned_demos %}
-                <div class="bg-slate-800/50 rounded-xl p-5 border border-slate-700 flex flex-col justify-between">
-                    <div>
-                        <div class="flex justify-between items-start mb-2">
-                            <div class="flex items-center gap-2">
-                                <input type="checkbox" class="demo-checkbox w-4 h-4 rounded border-slate-700 bg-slate-900 text-orange-500 focus:ring-orange-500" value="{{ c.id }}">
-                                <p class="font-bold text-slate-200">{{ c.phone }}</p>
-                            </div>
-                            <span class="px-2 py-1 bg-orange-500/20 text-orange-400 text-[10px] uppercase font-bold rounded-lg">Demo Inactiva</span>
-                        </div>
-                        <p class="text-xs text-slate-400">{{ c.business_type }}</p>
-                        <p class="text-xs text-slate-500 mt-2">Creado: {{ c.created_at[:10] }}</p>
-                    </div>
-                    <button onclick="sendRetargeting('{{ c.id }}')" class="mt-4 w-full bg-orange-600 hover:bg-orange-500 text-white py-2 rounded-lg text-sm font-bold transition flex items-center justify-center">
-                        <i class="fab fa-whatsapp mr-2"></i> Recordatorio
-                    </button>
-                </div>
-            {% endfor %}
-            </div>
-            
-            <!-- Formulario oculto para eliminar demos -->
-            <form id="deleteDemosForm" method="POST" action="/admin/delete_abandoned_demos" class="hidden">
-                <input type="hidden" name="client_ids" id="deleteDemosInput">
-            </form>
-            
-            <script>
-                function selectAllDemos() {
-                    const checkboxes = document.querySelectorAll('.demo-checkbox');
-                    const allChecked = Array.from(checkboxes).every(c => c.checked);
-                    checkboxes.forEach(c => c.checked = !allChecked);
-                }
+        <script>
+            function toggleAbandonedDemos() {
+                const content = document.getElementById('abandoned-demos-content');
+                const icon = document.getElementById('icon-toggle-demos');
+                const text = document.getElementById('text-toggle-demos');
+                if (!content) return;
                 
-                function sendSelectedRetargeting() {
-                    const selected = Array.from(document.querySelectorAll('.demo-checkbox:checked')).map(c => c.value);
-                    if (selected.length === 0) return alert('Selecciona al menos un usuario.');
-                    if (confirm(`¿Seguro que deseas enviar recordatorios a ${selected.length} usuarios seleccionados?`)) {
-                        sendRetargeting(selected.join(','));
-                    }
+                const isHidden = content.classList.contains('hidden');
+                if (isHidden) {
+                    content.classList.remove('hidden');
+                    if (icon) icon.classList.add('rotate-180');
+                    if (text) text.textContent = 'Ocultar Demos Abandonadas ({{ abandoned_demos|length }})';
+                } else {
+                    content.classList.add('hidden');
+                    if (icon) icon.classList.remove('rotate-180');
+                    if (text) text.textContent = 'Ver Demos Abandonadas ({{ abandoned_demos|length }})';
                 }
-                
-                function deleteSelectedDemos() {
-                    const selected = Array.from(document.querySelectorAll('.demo-checkbox:checked')).map(c => c.value);
-                    if (selected.length === 0) return alert('Selecciona al menos una demo para eliminar.');
-                    if (confirm(`¿Estás seguro que deseas ELIMINAR permanentemente las ${selected.length} demos seleccionadas?`)) {
-                        document.getElementById('deleteDemosInput').value = selected.join(',');
-                        document.getElementById('deleteDemosForm').submit();
-                    }
-                }
+            }
 
-                function sendRetargeting(clientIds) {
-                    if(clientIds.indexOf(',') === -1) {
-                        if(!confirm('¿Seguro que deseas enviar el mensaje de recordatorio a este cliente?')) return;
-                    }
-                    
-                    fetch('/admin/retargeting/' + clientIds, {
-                        method: 'POST'
-                    }).then(res => res.json())
-                    .then(data => {
-                        if(data.success) {
-                            alert('¡Mensaje de recordatorio enviado exitosamente!');
-                        } else {
-                            alert('Error: ' + data.error);
-                        }
-                    }).catch(err => {
-                        alert('Error de conexión');
-                    });
+            function selectAllDemos() {
+                const checkboxes = document.querySelectorAll('.demo-checkbox');
+                const allChecked = Array.from(checkboxes).every(c => c.checked);
+                checkboxes.forEach(c => c.checked = !allChecked);
+            }
+            
+            function sendSelectedRetargeting() {
+                const selected = Array.from(document.querySelectorAll('.demo-checkbox:checked')).map(c => c.value);
+                if (selected.length === 0) return alert('Selecciona al menos un usuario.');
+                if (confirm(`¿Seguro que deseas enviar recordatorios a ${selected.length} usuarios seleccionados?`)) {
+                    sendRetargeting(selected.join(','));
                 }
-            </script>
-        {% else %}
-            <div class="text-center py-10 bg-slate-800/30 rounded-2xl border border-slate-700 border-dashed">
-                <i class="fas fa-check-circle text-4xl text-slate-600 mb-3"></i>
-                <p class="text-slate-400 text-sm">Excelente, no hay demos abandonadas por el momento.</p>
-            </div>
-        {% endif %}
+            }
+            
+            function deleteSelectedDemos() {
+                const selected = Array.from(document.querySelectorAll('.demo-checkbox:checked')).map(c => c.value);
+                if (selected.length === 0) return alert('Selecciona al menos una demo para eliminar.');
+                if (confirm(`¿Estás seguro que deseas ELIMINAR permanentemente las ${selected.length} demos seleccionadas?`)) {
+                    document.getElementById('deleteDemosInput').value = selected.join(',');
+                    document.getElementById('deleteDemosForm').submit();
+                }
+            }
+
+            function sendRetargeting(clientIds) {
+                if(clientIds.indexOf(',') === -1) {
+                    if(!confirm('¿Seguro que deseas enviar el mensaje de recordatorio a este cliente?')) return;
+                }
+                
+                fetch('/admin/retargeting/' + clientIds, {
+                    method: 'POST'
+                }).then(res => res.json())
+                .then(data => {
+                    if(data.success) {
+                        alert('¡Mensaje de recordatorio enviado exitosamente!');
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                }).catch(err => {
+                    alert('Error de conexión');
+                });
+            }
+        </script>
     </div>
 
-    <!-- Barrido Masivo de Prospectos (Google Maps Multi-Zona) -->
+    <!-- Campaña Outbound de WhatsApp (Demo Servida en Bandeja) -->
+    <div class="glass-card rounded-3xl p-8 mb-8" id="outbound-campaign-card">
+        <!-- Encabezado -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+                <h2 class="text-xl font-bold flex items-center">
+                    <span class="mr-3 text-2xl">🚀</span>
+                    <span>Campaña Outbound de WhatsApp</span>
+                </h2>
+                <p class="text-sm text-slate-400 mt-1">
+                    Envío automatizado de la demo personalizada lista para usar a comercios prospectados.
+                </p>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded-full border border-emerald-500/30 whitespace-nowrap self-start sm:self-auto">
+                <i class="fab fa-whatsapp"></i> Plantilla Meta Aprobada
+            </span>
+        </div>
+
+        <!-- Formulario de Configuración de Campaña -->
+        <form id="campaign-form" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- 1. Archivo de Prospectos -->
+                <div class="md:col-span-1">
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="campaign-file-select" class="block text-sm font-semibold text-slate-300">
+                            Archivo de Prospectos (.csv)
+                        </label>
+                        <button type="button" id="btn-refresh-campaign-files" title="Refrescar lista de archivos"
+                                class="text-xs text-slate-400 hover:text-white transition flex items-center gap-1 cursor-pointer">
+                            <i class="fas fa-sync-alt text-[10px]"></i>
+                            <span>Actualizar</span>
+                        </button>
+                    </div>
+                    <select id="campaign-file-select" name="file" required
+                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-emerald-500 transition cursor-pointer">
+                        <option value="">Cargando archivos...</option>
+                    </select>
+                    <p class="text-[11px] text-slate-500 mt-1">Archivos generados por el Barrido Masivo.</p>
+                </div>
+
+                <!-- 2. Cantidad a Enviar -->
+                <div class="md:col-span-1">
+                    <label for="campaign-limit" class="block text-sm font-semibold text-slate-300 mb-2">
+                        Cantidad a Enviar
+                    </label>
+                    <select id="campaign-limit" name="limit"
+                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-emerald-500 transition cursor-pointer">
+                        <option value="10">10 comercios (Piloto)</option>
+                        <option value="20" selected>20 comercios (Recomendado)</option>
+                        <option value="50">50 comercios</option>
+                        <option value="0">Sin límite</option>
+                    </select>
+                    <p class="text-[11px] text-slate-500 mt-1">Límite de envíos para esta ejecución.</p>
+                </div>
+
+                <!-- 3. Intervalo entre Envíos -->
+                <div class="md:col-span-1">
+                    <label for="campaign-delay" class="block text-sm font-semibold text-slate-300 mb-2">
+                        Intervalo entre Envíos (Pacing)
+                    </label>
+                    <select id="campaign-delay" name="delay"
+                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-emerald-500 transition cursor-pointer">
+                        <option value="15" selected>15 segundos (Seguro)</option>
+                        <option value="20">20 segundos</option>
+                    </select>
+                    <p class="text-[11px] text-slate-500 mt-1">Protege la reputación del número de WhatsApp.</p>
+                </div>
+            </div>
+
+            <!-- Checkbox Modo Simulación (Dry-Run) -->
+            <div class="flex items-center gap-3 bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+                <input type="checkbox" id="campaign-dry-run" name="dry_run" checked
+                       class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer">
+                <label for="campaign-dry-run" class="text-sm font-medium text-slate-300 cursor-pointer select-none">
+                    <span class="text-white font-semibold">Simulación (Dry-Run):</span> Ver destinatarios y validar datos en la consola sin enviar mensajes reales ni consumir saldo de Meta.
+                </label>
+            </div>
+
+            <!-- Botón Iniciar Campaña -->
+            <div class="flex items-center justify-start">
+                <button type="submit" id="btn-start-campaign"
+                        class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 px-8 rounded-xl transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
+                    <i class="fas fa-paper-plane"></i>
+                    <span>Iniciar Campaña Outbound</span>
+                </button>
+            </div>
+        </form>
+
+        <!-- Widget de Progreso en Vivo -->
+        <div id="campaign-progress-panel" class="hidden mt-8 pt-8 border-t border-slate-800 space-y-6">
+            <!-- Barra de Progreso y Porcentaje -->
+            <div class="space-y-2">
+                <div class="flex justify-between items-center text-xs font-semibold text-slate-300">
+                    <span class="flex items-center gap-2">
+                        <i class="fas fa-circle-notch fa-spin text-emerald-400" id="campaign-progress-spinner"></i>
+                        <span id="campaign-progress-label">Campaña en curso...</span>
+                    </span>
+                    <span id="campaign-progress-percent" class="font-extrabold text-emerald-400 text-sm">0%</span>
+                </div>
+                <div class="w-full bg-slate-900 rounded-full h-3.5 overflow-hidden border border-slate-800 p-0.5 shadow-inner">
+                    <div id="campaign-progress-bar"
+                         class="bg-emerald-500 transition-all duration-300 h-full rounded-full shadow-sm"
+                         style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <!-- Métricas en tiempo real: Contacto Actual, Enviados / Total, Estado -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <!-- 1. Contacto Actual -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider">Contacto Actual</span>
+                        <i class="fas fa-user text-emerald-400 text-sm"></i>
+                    </div>
+                    <p id="campaign-stat-contact" class="text-sm font-bold text-white truncate" title="Iniciando...">
+                        Iniciando...
+                    </p>
+                </div>
+
+                <!-- 2. Enviados / Total -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider">Enviados / Total</span>
+                        <i class="fas fa-paper-plane text-blue-400 text-sm"></i>
+                    </div>
+                    <p id="campaign-stat-count" class="text-2xl font-black text-white">
+                        0 / 0
+                    </p>
+                </div>
+
+                <!-- 3. Estado -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider">Estado</span>
+                        <i class="fas fa-wave-square text-amber-400 text-sm"></i>
+                    </div>
+                    <div id="campaign-stat-status" class="flex items-center">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            En curso...
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div class="flex flex-wrap items-center gap-3">
+                <button type="button" id="btn-stop-campaign"
+                        class="bg-slate-800 hover:bg-red-950/40 border border-red-500/30 text-red-300 hover:text-red-200 font-bold py-2.5 px-5 rounded-xl transition text-sm flex items-center gap-2 cursor-pointer">
+                    <i class="fas fa-stop"></i>
+                    <span>Detener Campaña</span>
+                </button>
+                <button type="button" id="btn-reset-campaign"
+                        class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold py-2.5 px-4 rounded-xl transition text-sm flex items-center gap-1.5 cursor-pointer">
+                    <i class="fas fa-redo"></i>
+                    <span>Nueva Campaña</span>
+                </button>
+            </div>
+
+            <!-- Consola en vivo (Terminal de Mensajes) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs text-slate-400">
+                    <span class="font-bold flex items-center gap-1.5">
+                        <i class="fas fa-terminal text-emerald-400"></i> Consola de Envíos en Vivo
+                    </span>
+                    <span id="campaign-console-count" class="text-[11px] text-slate-500">0 logs</span>
+                </div>
+                <div id="campaign-console-log"
+                     class="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 font-mono text-xs text-slate-300 h-48 overflow-y-auto space-y-1.5 shadow-inner">
+                    <p class="text-slate-600 italic">Esperando inicio de la campaña...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script de Control de la Campaña Outbound -->
+    <script>
+        (function() {
+            let campaignPollingInterval = null;
+
+            function escapeText(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function loadCampaignFiles() {
+                const fileSelect = document.getElementById('campaign-file-select');
+                if (!fileSelect) return;
+
+                fetch('/admin/bulk_scraper/files')
+                    .then(res => {
+                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                        return res.json();
+                    })
+                    .then(data => {
+                        const files = data.files || [];
+                        if (files.length === 0) {
+                            fileSelect.innerHTML = '<option value="">No hay archivos CSV guardados aún (ejecuta un Barrido Masivo)</option>';
+                            fileSelect.disabled = true;
+                            return;
+                        }
+
+                        fileSelect.disabled = false;
+                        const currentVal = fileSelect.value;
+                        let optionsHtml = '';
+                        files.forEach(f => {
+                            const fname = f.filename || '';
+                            const leads = f.leads_count ?? f.leads ?? 0;
+                            const size = f.size_kb !== undefined ? `${f.size_kb} KB` : '';
+                            const date = f.created_at ? ` • ${f.created_at}` : '';
+                            optionsHtml += `<option value="${escapeText(fname)}">${escapeText(fname)} (${leads} leads${size ? ' • ' + size : ''}${date})</option>`;
+                        });
+                        fileSelect.innerHTML = optionsHtml;
+                        if (currentVal && files.some(f => f.filename === currentVal)) {
+                            fileSelect.value = currentVal;
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error cargando archivos para campaña:', err);
+                        fileSelect.innerHTML = '<option value="">Error al cargar lista de archivos</option>';
+                    });
+            }
+
+            // Exponer globalmente para sincronización cruzada
+            window.loadCampaignFiles = loadCampaignFiles;
+
+            function renderCampaignStatusBadge(statusText, type) {
+                const statStatus = document.getElementById('campaign-stat-status');
+                if (!statStatus) return;
+                let bgClasses = 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+                let dotColor = 'bg-amber-400';
+                let pulseClass = 'animate-pulse';
+
+                if (type === 'success') {
+                    bgClasses = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+                    dotColor = 'bg-emerald-400';
+                    pulseClass = '';
+                } else if (type === 'stopped') {
+                    bgClasses = 'bg-rose-500/20 text-rose-300 border-rose-500/30';
+                    dotColor = 'bg-rose-400';
+                    pulseClass = '';
+                } else if (type === 'error') {
+                    bgClasses = 'bg-red-500/20 text-red-300 border-red-500/30';
+                    dotColor = 'bg-red-400';
+                    pulseClass = '';
+                }
+
+                statStatus.innerHTML = `
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${bgClasses} ${pulseClass}">
+                        <span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span>
+                        ${statusText}
+                    </span>
+                `;
+            }
+
+            function updateCampaignUI(data) {
+                if (!data) return;
+
+                const status = data.status || 'idle';
+                const sent = data.sent_count ?? data.enviados ?? data.sent ?? 0;
+                const total = data.total_count ?? data.total ?? data.total_leads ?? 0;
+                const currentContact = data.current_contact ?? data.contacto_actual ?? data.contact ?? '';
+
+                // Progreso
+                let percent = 0;
+                if (typeof data.progress_percent === 'number') {
+                    percent = data.progress_percent;
+                } else if (typeof data.porcentaje === 'number') {
+                    percent = data.porcentaje;
+                } else if (total > 0) {
+                    percent = Math.round((sent / total) * 100);
+                }
+                percent = Math.min(100, Math.max(0, percent));
+
+                // Elementos DOM
+                const progressBar = document.getElementById('campaign-progress-bar');
+                const progressPercent = document.getElementById('campaign-progress-percent');
+                const progressLabel = document.getElementById('campaign-progress-label');
+                const progressSpinner = document.getElementById('campaign-progress-spinner');
+                const progressPanel = document.getElementById('campaign-progress-panel');
+                const statContact = document.getElementById('campaign-stat-contact');
+                const statCount = document.getElementById('campaign-stat-count');
+                const startBtn = document.getElementById('btn-start-campaign');
+                const stopBtn = document.getElementById('btn-stop-campaign');
+                const resetBtn = document.getElementById('btn-reset-campaign');
+                const consoleLog = document.getElementById('campaign-console-log');
+                const consoleCount = document.getElementById('campaign-console-count');
+
+                if (progressBar) progressBar.style.width = `${percent}%`;
+                if (progressPercent) progressPercent.textContent = `${percent}%`;
+                if (statContact) {
+                    statContact.textContent = currentContact || (status === 'completed' ? 'Todos procesados' : (status === 'stopped' ? 'Detenido' : 'Iniciando...'));
+                    statContact.title = statContact.textContent;
+                }
+                if (statCount) statCount.textContent = `${sent} / ${total}`;
+
+                // Consola de logs
+                if (consoleLog && Array.isArray(data.logs)) {
+                    if (consoleCount) consoleCount.textContent = `${data.logs.length} logs`;
+                    if (data.logs.length > 0) {
+                        consoleLog.innerHTML = data.logs.map(log => {
+                            let color = 'text-slate-300';
+                            const l = String(log);
+                            if (l.includes('✅') || l.includes('ENVIADO') || l.includes('exitosamente')) color = 'text-emerald-400 font-semibold';
+                            else if (l.includes('🛑') || l.includes('OPT-OUT') || l.includes('Omitiendo') || l.includes('Saltando')) color = 'text-amber-400';
+                            else if (l.includes('❌') || l.includes('ERROR') || l.includes('inválido')) color = 'text-rose-400 font-semibold';
+                            else if (l.includes('ℹ️') || l.includes('🚀') || l.includes('Iniciando')) color = 'text-cyan-400';
+                            return `<div class="${color}">${escapeText(l)}</div>`;
+                        }).join('');
+                        consoleLog.scrollTop = consoleLog.scrollHeight;
+                    }
+                }
+
+                if (status === 'running' || status === 'in_progress') {
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (startBtn) {
+                        startBtn.disabled = true;
+                        startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        startBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i><span>Enviando Campaña...</span>';
+                    }
+                    if (progressSpinner) progressSpinner.classList.remove('hidden');
+                    if (progressLabel) progressLabel.textContent = data.dry_run ? 'Simulación en curso (Dry-Run)...' : 'Enviando mensajes de WhatsApp...';
+                    if (stopBtn) stopBtn.classList.remove('hidden');
+                    if (resetBtn) resetBtn.classList.add('hidden');
+                    renderCampaignStatusBadge(data.dry_run ? 'Simulando...' : 'Enviando...', 'progress');
+                } else if (status === 'completed') {
+                    stopCampaignPolling();
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressBar) progressBar.style.width = '100%';
+                    if (progressPercent) progressPercent.textContent = '100%';
+                    if (progressSpinner) progressSpinner.classList.add('hidden');
+                    if (progressLabel) progressLabel.textContent = data.dry_run ? '¡Simulación Completada con Éxito!' : '¡Campaña Outbound Finalizada!';
+                    if (stopBtn) stopBtn.classList.add('hidden');
+                    if (resetBtn) resetBtn.classList.remove('hidden');
+                    renderCampaignStatusBadge('Completada', 'success');
+                } else if (status === 'stopped') {
+                    stopCampaignPolling();
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressSpinner) progressSpinner.classList.add('hidden');
+                    if (progressLabel) progressLabel.textContent = 'Campaña detenida por el usuario';
+                    if (stopBtn) stopBtn.classList.add('hidden');
+                    if (resetBtn) resetBtn.classList.remove('hidden');
+                    renderCampaignStatusBadge('Detenida', 'stopped');
+                } else if (status === 'error') {
+                    stopCampaignPolling();
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressSpinner) progressSpinner.classList.add('hidden');
+                    if (progressLabel) progressLabel.textContent = 'Ocurrió un error en la campaña';
+                    if (stopBtn) stopBtn.classList.add('hidden');
+                    if (resetBtn) resetBtn.classList.remove('hidden');
+                    renderCampaignStatusBadge('Error', 'error');
+                }
+            }
+
+            function fetchCampaignStatus() {
+                fetch('/admin/campaign/status')
+                    .then(res => {
+                        if (!res.ok) throw new Error('Status HTTP ' + res.status);
+                        return res.json();
+                    })
+                    .then(data => {
+                        updateCampaignUI(data);
+                    })
+                    .catch(err => {
+                        console.debug('[Campaign] Polling status:', err.message);
+                    });
+            }
+
+            function startCampaignPolling() {
+                stopCampaignPolling();
+                fetchCampaignStatus();
+                campaignPollingInterval = setInterval(fetchCampaignStatus, 2000);
+            }
+
+            function stopCampaignPolling() {
+                if (campaignPollingInterval) {
+                    clearInterval(campaignPollingInterval);
+                    campaignPollingInterval = null;
+                }
+            }
+
+            // Iniciar Campaña (Submit Form)
+            const campaignForm = document.getElementById('campaign-form');
+            if (campaignForm) {
+                campaignForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const fileSelect = document.getElementById('campaign-file-select');
+                    const filename = fileSelect ? fileSelect.value : '';
+                    if (!filename) {
+                        alert('Por favor selecciona un archivo CSV de prospectos.');
+                        return;
+                    }
+
+                    const limit = parseInt(document.getElementById('campaign-limit').value, 10);
+                    const delay = parseInt(document.getElementById('campaign-delay').value, 10);
+                    const dryRun = document.getElementById('campaign-dry-run').checked;
+
+                    const payload = {
+                        filename: filename,
+                        file: filename,
+                        limit: limit,
+                        delay: delay,
+                        dry_run: dryRun
+                    };
+
+                    const startBtn = document.getElementById('btn-start-campaign');
+                    const progressPanel = document.getElementById('campaign-progress-panel');
+                    const progressBar = document.getElementById('campaign-progress-bar');
+                    const progressPercent = document.getElementById('campaign-progress-percent');
+                    const statContact = document.getElementById('campaign-stat-contact');
+                    const statCount = document.getElementById('campaign-stat-count');
+                    const stopBtn = document.getElementById('btn-stop-campaign');
+                    const resetBtn = document.getElementById('btn-reset-campaign');
+                    const consoleLog = document.getElementById('campaign-console-log');
+                    const consoleCount = document.getElementById('campaign-console-count');
+
+                    if (startBtn) {
+                        startBtn.disabled = true;
+                        startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        startBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i><span>Iniciando...</span>';
+                    }
+
+                    // Reset visual inmediato
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressBar) progressBar.style.width = '0%';
+                    if (progressPercent) progressPercent.textContent = '0%';
+                    if (statContact) statContact.textContent = 'Conectando con el despachador...';
+                    if (statCount) statCount.textContent = '0 / 0';
+                    if (stopBtn) stopBtn.classList.remove('hidden');
+                    if (resetBtn) resetBtn.classList.add('hidden');
+                    if (consoleCount) consoleCount.textContent = '1 log';
+                    if (consoleLog) {
+                        consoleLog.innerHTML = `<div class="text-cyan-400 font-bold">> [${new Date().toLocaleTimeString()}] Iniciando campaña con archivo ${escapeText(filename)} (Límite: ${limit || 'Sin límite'}, Delay: ${delay}s, Dry-run: ${dryRun})...</div>`;
+                    }
+                    renderCampaignStatusBadge('Iniciando...', 'progress');
+
+                    fetch('/admin/campaign/start', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success || data.status === 'started' || data.status === 'running') {
+                            startCampaignPolling();
+                        } else {
+                            alert('Error al iniciar campaña: ' + (data.error || 'Respuesta inesperada'));
+                            if (startBtn) {
+                                startBtn.disabled = false;
+                                startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                                startBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i><span>Iniciar Campaña Outbound</span>';
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        alert('Error de conexión al iniciar campaña.');
+                        console.error(err);
+                        if (startBtn) {
+                            startBtn.disabled = false;
+                            startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                            startBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i><span>Iniciar Campaña Outbound</span>';
+                        }
+                    });
+                });
+            }
+
+            // Detener Campaña
+            const stopCampaignBtn = document.getElementById('btn-stop-campaign');
+            if (stopCampaignBtn) {
+                stopCampaignBtn.addEventListener('click', function() {
+                    if (!confirm('¿Estás seguro de detener la campaña en curso? Se conservará el registro de los envíos realizados hasta ahora.')) {
+                        return;
+                    }
+                    stopCampaignBtn.disabled = true;
+                    stopCampaignBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Deteniendo...';
+
+                    fetch('/admin/campaign/stop', {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json' }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        fetchCampaignStatus();
+                    })
+                    .catch(err => {
+                        console.error('Error al detener campaña:', err);
+                        fetchCampaignStatus();
+                    })
+                    .finally(() => {
+                        stopCampaignBtn.disabled = false;
+                        stopCampaignBtn.innerHTML = '<i class="fas fa-stop mr-1"></i><span>Detener Campaña</span>';
+                    });
+                });
+            }
+
+            // Reiniciar Campaña
+            const resetCampaignBtn = document.getElementById('btn-reset-campaign');
+            if (resetCampaignBtn) {
+                resetCampaignBtn.addEventListener('click', function() {
+                    stopCampaignPolling();
+                    const progressPanel = document.getElementById('campaign-progress-panel');
+                    if (progressPanel) progressPanel.classList.add('hidden');
+                    const startBtn = document.getElementById('btn-start-campaign');
+                    if (startBtn) {
+                        startBtn.disabled = false;
+                        startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        startBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i><span>Iniciar Campaña Outbound</span>';
+                    }
+                });
+            }
+
+            // Botón manual de refresco de archivos
+            const refreshCampaignFilesBtn = document.getElementById('btn-refresh-campaign-files');
+            if (refreshCampaignFilesBtn) {
+                refreshCampaignFilesBtn.addEventListener('click', function() {
+                    const icon = refreshCampaignFilesBtn.querySelector('i');
+                    if (icon) icon.classList.add('fa-spin');
+                    loadCampaignFiles();
+                    setTimeout(() => {
+                        if (icon) icon.classList.remove('fa-spin');
+                    }, 600);
+                });
+            }
+
+            // Inicializar en carga
+            document.addEventListener('DOMContentLoaded', function() {
+                loadCampaignFiles();
+                fetchCampaignStatus();
+            });
+        })();
+    </script>
     <div class="glass-card rounded-3xl p-8 mt-6" id="bulk-scraper-card">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
@@ -1177,6 +1747,9 @@
                             `;
                         });
                         listContainer.innerHTML = html;
+                        if (typeof window.loadCampaignFiles === 'function') {
+                            window.loadCampaignFiles();
+                        }
                     })
                     .catch(err => {
                         console.error('Error cargando archivos de leads:', err);
