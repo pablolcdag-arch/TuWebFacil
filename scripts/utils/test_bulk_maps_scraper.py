@@ -55,19 +55,24 @@ def test_arg_geo_catalog_structure():
     assert "Nueva Córdoba, Córdoba" in arg_geo_catalog.CORDOBA
     assert len(arg_geo_catalog.MENDOZA) == 14
     assert len(arg_geo_catalog.TUCUMAN) == 8
-    assert len(arg_geo_catalog.BUENOS_AIRES_INTERIOR) == 20
+    assert len(arg_geo_catalog.BUENOS_AIRES_INTERIOR) == 25
     assert "Centro, Mar del Plata, Buenos Aires" in arg_geo_catalog.BUENOS_AIRES_INTERIOR
 
     # 4. Macro-zona Argentina
-    assert len(arg_geo_catalog.ARGENTINA) >= 200, f"Argentina debe tener >= 200 zonas, tiene: {len(arg_geo_catalog.ARGENTINA)}"
+    assert len(arg_geo_catalog.ARGENTINA) == 248, f"Argentina debe tener 248 zonas, tiene: {len(arg_geo_catalog.ARGENTINA)}"
     assert len(arg_geo_catalog.ARGENTINA) == len(set(arg_geo_catalog.ARGENTINA)), "Argentina no debe contener duplicados"
 
-    # 5. Helper obtener_zonas_por_clave
+    # 5. Helper obtener_zonas_por_clave y aliases
     assert len(arg_geo_catalog.obtener_zonas_por_clave("caba")) == 48
     assert len(arg_geo_catalog.obtener_zonas_por_clave("CABA")) == 48
     assert len(arg_geo_catalog.obtener_zonas_por_clave("capital")) == 48
     assert len(arg_geo_catalog.obtener_zonas_por_clave("rosario")) == 20
     assert len(arg_geo_catalog.obtener_zonas_por_clave("cordoba")) == 20
+    assert len(arg_geo_catalog.obtener_zonas_por_clave("toda_argentina")) == 248, "toda_argentina debe resolver a las 248 zonas de ARGENTINA"
+    assert len(arg_geo_catalog.obtener_zonas_por_clave("nacional")) == 248
+    assert len(arg_geo_catalog.obtener_zonas_por_clave("argentina_completa")) == 248
+    assert len(arg_geo_catalog.obtener_zonas_por_clave("bsas_interior")) == len(arg_geo_catalog.BUENOS_AIRES_INTERIOR)
+    assert len(arg_geo_catalog.obtener_zonas_por_clave("interior_bsas")) == len(arg_geo_catalog.BUENOS_AIRES_INTERIOR)
 
     # Ubicación personalizada
     custom_zone = arg_geo_catalog.obtener_zonas_por_clave("Las Cañitas, CABA")
@@ -137,6 +142,13 @@ def test_bulk_scraper_stop_loss_and_costs():
 
         assert status["status"] == "completed"
         assert status["comercios_encontrados"] == 3, f"Debió frenar exactamente en 3, obtuvo: {status['comercios_encontrados']}"
+        assert status["leads_count"] == 3
+        assert status["total_leads"] == 3
+        assert status["leads"] == 3
+        assert status["progress_percent"] == 100
+        assert "download_url" in status and status["download_url"].startswith("/admin/bulk_scraper/download/")
+        assert status["estimated_cost"] == status["consumo_usd"]
+        assert "estimated_cost_str" in status
         assert scraper.comercios_encontrados == 3
 
         # Costos: 1 text search ($0.032) + 3 place details ($0.017 * 3 = $0.051) = $0.083

@@ -133,17 +133,39 @@ class BulkMapsScraper:
 
     def get_status(self) -> Dict:
         """Retorna un snapshot serializable del estado actual."""
+        progress_pct = round((self.indice_zona / self.total_zonas) * 100) if self.total_zonas > 0 else 0
+        if self.status == "completed":
+            progress_pct = 100
+            
+        cost_val = round(self.consumo_usd, 4)
         return {
             "task_id": self.task_id,
             "status": self.status,
             "rubro": self.rubro,
             "zona_clave": self.zona_clave,
+            # Zonas
             "zona_actual": self.zona_actual,
+            "current_zone": self.zona_actual,
             "indice_zona": self.indice_zona,
+            "zone_index": self.indice_zona,
             "total_zonas": self.total_zonas,
+            "total_zones": self.total_zonas,
+            # Progreso
+            "progress_percent": progress_pct,
+            # Leads
             "comercios_encontrados": self.comercios_encontrados,
-            "consumo_usd": round(self.consumo_usd, 4),
+            "leads_count": self.comercios_encontrados,
+            "total_leads": self.comercios_encontrados,
+            "leads": self.comercios_encontrados,
+            # Costos
+            "consumo_usd": cost_val,
+            "estimated_cost": cost_val,
+            "estimated_cost_str": f"~${self.consumo_usd:.2f} USD",
+            # Archivo
             "csv_filename": self.csv_filename,
+            "filename": self.csv_filename,
+            "download_url": f"/admin/bulk_scraper/download/{self.csv_filename}" if self.csv_filename else "",
+            # Control y errores
             "error": self.error_message,
             "started_at": self.started_at,
             "completed_at": self.completed_at

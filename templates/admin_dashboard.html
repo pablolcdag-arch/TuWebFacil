@@ -635,14 +635,14 @@
                     </label>
                     <select id="bulk_zona" name="zona"
                             class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500 transition cursor-pointer">
-                        <option value="toda_argentina">🇦🇷 Toda Argentina (Nacional - ~250 zonas)</option>
+                        <option value="argentina">🇦🇷 Toda Argentina (Nacional - ~250 zonas)</option>
                         <option value="caba" selected>🏙️ CABA (Todos los 48 barrios)</option>
                         <option value="gba">🌆 Gran Buenos Aires (35 municipios)</option>
                         <option value="santa_fe">🌾 Provincia de Santa Fe (Rosario, Santa Fe Cap. y ciudades)</option>
                         <option value="cordoba">⛰️ Provincia de Córdoba (Capital y ciudades)</option>
                         <option value="mendoza">🍷 Provincia de Mendoza</option>
                         <option value="tucuman">🍋 Provincia de Tucumán</option>
-                        <option value="bsas_interior">🌊 Buenos Aires Interior (Mar del Plata, La Plata, Bahía Blanca...)</option>
+                        <option value="buenos_aires_interior">🌊 Buenos Aires Interior (Mar del Plata, La Plata, Bahía Blanca...)</option>
                     </select>
                 </div>
 
@@ -826,15 +826,17 @@
                 if (!data) return;
 
                 const status = data.status || 'idle';
-                const leads = data.leads_count ?? data.total_leads ?? data.leads ?? 0;
-                const totalZones = data.total_zones || 0;
-                const currentZoneIdx = data.zone_index || 0;
-                const currentZoneName = data.current_zone || '';
-                
+                const leads = data.leads_count ?? data.comercios_encontrados ?? data.total_leads ?? data.leads ?? 0;
+                const totalZones = data.total_zones ?? data.total_zonas ?? 0;
+                const currentZoneIdx = data.zone_index ?? data.indice_zona ?? 0;
+                const currentZoneName = data.current_zone ?? data.zona_actual ?? '';
+
                 // Cálculo del porcentaje
                 let percent = 0;
                 if (typeof data.progress_percent === 'number') {
                     percent = data.progress_percent;
+                } else if (typeof data.porcentaje === 'number') {
+                    percent = data.porcentaje;
                 } else if (totalZones > 0) {
                     percent = Math.round((currentZoneIdx / totalZones) * 100);
                 }
@@ -842,22 +844,24 @@
 
                 // Formatear texto de zona
                 let zonaText = 'Iniciando...';
-                if (currentZoneName) {
-                    zonaText = totalZones > 0 ? `${currentZoneName} (${currentZoneIdx}/${totalZones})` : currentZoneName;
-                } else if (status === 'completed') {
+                if (status === 'completed') {
                     zonaText = totalZones > 0 ? `Todas completadas (${totalZones}/${totalZones})` : 'Finalizado';
+                } else if (currentZoneName) {
+                    zonaText = totalZones > 0 ? `${currentZoneName} (${currentZoneIdx}/${totalZones})` : currentZoneName;
                 }
 
                 // Formatear texto de consumo
                 let costText = '~$0.00 USD (crédito gratuito)';
                 if (data.estimated_cost_str) {
-                    costText = data.estimated_cost_str;
-                } else if (typeof data.estimated_cost === 'number') {
-                    costText = `~$${data.estimated_cost.toFixed(2)} USD (crédito gratuito)`;
+                    costText = data.estimated_cost_str.includes('crédito') ? data.estimated_cost_str : `${data.estimated_cost_str} (crédito gratuito)`;
+                } else {
+                    const rawCost = data.estimated_cost !== undefined ? data.estimated_cost : (data.consumo_usd !== undefined ? data.consumo_usd : 0);
+                    costText = `~$${parseFloat(rawCost || 0).toFixed(2)} USD (crédito gratuito)`;
                 }
 
                 // URL de descarga
-                const downloadUrl = data.download_url || (data.filename ? `/admin/bulk_scraper/download/${encodeURIComponent(data.filename)}` : '');
+                const filename = data.filename || data.csv_filename || '';
+                const downloadUrl = data.download_url || (filename ? `/admin/bulk_scraper/download/${encodeURIComponent(filename)}` : '');
 
                 // Actualizar elementos DOM
                 if (progressBar) progressBar.style.width = `${percent}%`;

@@ -103,7 +103,9 @@ BUENOS_AIRES_INTERIOR = [
     "Tandil, Buenos Aires", "San Nicolás de los Arroyos, Buenos Aires", "Pergamino, Buenos Aires",
     "Olavarría, Buenos Aires", "Junín, Buenos Aires", "Zárate, Buenos Aires",
     "Campana, Buenos Aires", "Necochea, Buenos Aires", "Chivilcoy, Buenos Aires",
-    "Mercedes, Buenos Aires", "Azul, Buenos Aires"
+    "Mercedes, Buenos Aires", "Azul, Buenos Aires", "Pinamar, Buenos Aires",
+    "Villa Gesell, Buenos Aires", "Chascomús, Buenos Aires", "Balcarce, Buenos Aires",
+    "Tres Arroyos, Buenos Aires"
 ]
 
 # ==============================================================================
@@ -137,13 +139,13 @@ RESTO_PROVINCIAS = [
     # Neuquén
     "Neuquén Capital, Neuquén", "San Martín de los Andes, Neuquén", "Cutral Có, Neuquén", "Plottier, Neuquén", "Zapala, Neuquén", "Villa La Angostura, Neuquén",
     # Río Negro
-    "Bariloche, Río Negro", "General Roca, Río Negro", "Cipolletti, Río Negro", "Viedma, Río Negro", "Villa Regina, Río Negro",
+    "Bariloche, Río Negro", "General Roca, Río Negro", "Cipolletti, Río Negro", "Viedma, Río Negro", "Villa Regina, Río Negro", "El Bolsón, Río Negro", "Las Grutas, Río Negro",
     # Chubut
     "Comodoro Rivadavia, Chubut", "Trelew, Chubut", "Puerto Madryn, Chubut", "Rawson, Chubut", "Esquel, Chubut",
     # Santa Cruz
     "Río Gallegos, Santa Cruz", "Caleta Olivia, Santa Cruz", "El Calafate, Santa Cruz", "Pico Truncado, Santa Cruz",
     # Tierra del Fuego
-    "Ushuaia, Tierra del Fuego", "Río Grande, Tierra del Fuego",
+    "Ushuaia, Tierra del Fuego", "Río Grande, Tierra del Fuego", "Tolhuin, Tierra del Fuego",
     # La Pampa
     "Santa Rosa, La Pampa", "General Pico, La Pampa", "Toay, La Pampa"
 ]
@@ -250,21 +252,28 @@ def obtener_zonas_por_clave(clave: str):
         return []
     
     clave_norm = str(clave).strip().lower().replace("-", "_")
-    if clave_norm in CATALOGO_ZONAS:
-        return list(CATALOGO_ZONAS[clave_norm])
     
     # Manejo de aliases comunes
     aliases = {
+        "toda_argentina": "argentina",
+        "nacional": "argentina",
+        "pais": "argentina",
+        "argentina_completa": "argentina",
         "capital_federal": "caba",
         "capital": "caba",
         "buenos_aires": "caba",
         "conurbano": "gba",
         "rosario": "santa_fe",
         "santafe": "santa_fe",
-        "cba": "cordoba"
+        "cba": "cordoba",
+        "bsas_interior": "buenos_aires_interior",
+        "buenos_aires_provincia": "buenos_aires_interior",
+        "interior_bsas": "buenos_aires_interior"
     }
-    if clave_norm in aliases:
-        return list(CATALOGO_ZONAS[aliases[clave_norm]])
+    
+    target_clave = aliases.get(clave_norm, clave_norm)
+    if target_clave in CATALOGO_ZONAS:
+        return list(CATALOGO_ZONAS[target_clave])
         
     # Zona personalizada (ej: "Palermo, CABA" o "Mar del Plata")
     return [str(clave).strip()]
