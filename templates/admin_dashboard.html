@@ -877,6 +877,10 @@
                     bgClasses = 'bg-rose-500/20 text-rose-300 border-rose-500/30';
                     dotColor = 'bg-rose-400';
                     pulseClass = '';
+                } else if (type === 'stopping') {
+                    bgClasses = 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+                    dotColor = 'bg-amber-400';
+                    pulseClass = 'animate-pulse';
                 } else if (type === 'error') {
                     bgClasses = 'bg-red-500/20 text-red-300 border-red-500/30';
                     dotColor = 'bg-red-400';
@@ -949,7 +953,18 @@
                     }
                 }
 
-                if (status === 'running' || status === 'in_progress') {
+                if (status === 'stopping') {
+                    if (progressPanel) progressPanel.classList.remove('hidden');
+                    if (progressSpinner) progressSpinner.classList.remove('hidden');
+                    if (progressLabel) progressLabel.textContent = 'Deteniendo campaña... (finalizando paso actual)';
+                    if (stopBtn) {
+                        stopBtn.disabled = true;
+                        stopBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Deteniendo...';
+                    }
+                    if (resetBtn) resetBtn.classList.add('hidden');
+                    renderCampaignStatusBadge('Deteniendo...', 'stopping');
+                } else if (status === 'running' || status === 'in_progress') {
                     if (progressPanel) progressPanel.classList.remove('hidden');
                     if (startBtn) {
                         startBtn.disabled = true;
@@ -958,7 +973,12 @@
                     }
                     if (progressSpinner) progressSpinner.classList.remove('hidden');
                     if (progressLabel) progressLabel.textContent = data.dry_run ? 'Simulación en curso (Dry-Run)...' : 'Enviando mensajes de WhatsApp...';
-                    if (stopBtn) stopBtn.classList.remove('hidden');
+                    if (stopBtn) {
+                        stopBtn.classList.remove('hidden');
+                        stopBtn.disabled = false;
+                        stopBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        stopBtn.innerHTML = '<i class="fas fa-stop mr-1"></i><span>Detener Campaña</span>';
+                    }
                     if (resetBtn) resetBtn.classList.add('hidden');
                     renderCampaignStatusBadge(data.dry_run ? 'Simulando...' : 'Enviando...', 'progress');
                 } else if (status === 'completed') {
@@ -1113,7 +1133,28 @@
                         return;
                     }
                     stopCampaignBtn.disabled = true;
+                    stopCampaignBtn.classList.add('opacity-50', 'cursor-not-allowed');
                     stopCampaignBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Deteniendo...';
+
+                    // Feedback visual inmediato
+                    renderCampaignStatusBadge('Deteniendo...', 'stopping');
+
+                    const progressLabel = document.getElementById('campaign-progress-label');
+                    if (progressLabel) progressLabel.textContent = 'Deteniendo campaña... (finalizando paso actual)';
+
+                    const consoleLog = document.getElementById('campaign-console-log');
+                    const consoleCount = document.getElementById('campaign-console-count');
+                    if (consoleLog) {
+                        const stopDiv = document.createElement('div');
+                        stopDiv.className = 'text-amber-400 font-semibold';
+                        stopDiv.textContent = `> [${new Date().toLocaleTimeString()}] [Deteniendo] Solicitando parada de la campaña...`;
+                        consoleLog.appendChild(stopDiv);
+                        consoleLog.scrollTop = consoleLog.scrollHeight;
+                        if (consoleCount) {
+                            const currentLogs = consoleLog.querySelectorAll('div').length;
+                            consoleCount.textContent = `${currentLogs} logs`;
+                        }
+                    }
 
                     fetch('/admin/campaign/stop', {
                         method: 'POST',
@@ -1128,8 +1169,7 @@
                         fetchCampaignStatus();
                     })
                     .finally(() => {
-                        stopCampaignBtn.disabled = false;
-                        stopCampaignBtn.innerHTML = '<i class="fas fa-stop mr-1"></i><span>Detener Campaña</span>';
+                        fetchCampaignStatus();
                     });
                 });
             }
@@ -1146,6 +1186,12 @@
                         startBtn.disabled = false;
                         startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                         startBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i><span>Iniciar Campaña Outbound</span>';
+                    }
+                    const stopBtn = document.getElementById('btn-stop-campaign');
+                    if (stopBtn) {
+                        stopBtn.disabled = false;
+                        stopBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        stopBtn.innerHTML = '<i class="fas fa-stop mr-1"></i><span>Detener Campaña</span>';
                     }
                 });
             }
@@ -1405,6 +1451,10 @@
                     bgClasses = 'bg-rose-500/20 text-rose-300 border-rose-500/30';
                     dotColor = 'bg-rose-400';
                     pulseClass = '';
+                } else if (type === 'stopping') {
+                    bgClasses = 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+                    dotColor = 'bg-amber-400';
+                    pulseClass = 'animate-pulse';
                 } else if (type === 'error') {
                     bgClasses = 'bg-red-500/20 text-red-300 border-red-500/30';
                     dotColor = 'bg-red-400';

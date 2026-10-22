@@ -507,3 +507,15 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
   4. En `scripts/utils/test_outbound_campaign.py`, se expandió la suite a 7 tests certificados cubriendo la resolución de barrios porteños, ciudades del interior, concurrencia, seguridad de endpoints y exclusiones de opt-out.
 - **Razón:** Proveer al administrador control total y autónomo para ejecutar y monitorear campañas outbound de WhatsApp directamente desde la web, con hiper-personalización barrial y sin sobrecargar la interfaz principal con cuadrículas masivas de demos inactivas.
 - **Impacto:** Experiencia de administración impecable, personalización persuasiva de máxima conversión en los mensajes y despacho seguro de prospección en un solo clic.
+
+## [22/10/2026] — Sincronización Multi-Worker de Parada de Campaña y Regla de Reporte Unificado
+- **Decisión:**
+  1. En `scripts/ops/send_outbound_campaign.py`, se implementó un mecanismo desacoplado de señalización y persistencia de estado en disco (`leads/.campaign_stop` y `leads/.campaign_state.json`) utilizando escrituras atómicas (`.tmp` + `os.replace`).
+  2. En `procesar_campana()`, el sleep entre envíos (pacing) fue reemplazado por un bucle de micro-intervalos ($\le 0.25$ segundos) que comprueba activamente la existencia de `.campaign_stop` o el flag `stop_event`, logrando una detención inmediata ante cualquier clic del usuario.
+  3. En `get_campaign_status()`, si el worker de Gunicorn que recibe la consulta no tiene la instancia en memoria (`_campaign_task is None`), lee de forma transparente el estado real desde `leads/.campaign_state.json`, garantizando telemetría y detención unificadas entre procesos.
+  4. En `templates/admin_dashboard.html`, se implementó feedback visual instantáneo en el botón `#btn-stop-campaign` (`disabled = true`, spinner animado, badge pulsante `stopping`), log inmediato en la terminal oscura y sincronización reactiva mediante `fetchCampaignStatus()`.
+  5. En `scripts/utils/test_outbound_campaign.py`, se incorporó el Test 8 (`test_multi_worker_disk_sync`) certificando el desacople de workers, la interrupción del pacing y la limpieza automática de archivos residuales.
+  6. En `.agents/AGENTS.md`, se formalizó la **Regla de Reporte Unificado (Bloque Único Copiable)**, exigiendo que todos los prompts de Implementadores y Verificadores concluyan con un único bloque de código markdown de 4 acentos graves (`# REPORTE PARA EL COORDINADOR`) para optimizar el intercambio de información y evitar scroll o selección manual con mouse.
+- **Razón:** En servidores de producción como Donweb, Gunicorn opera con múltiples procesos independientes (`-w 2`). Cuando la petición de inicio de campaña es atendida por un worker y la petición de detención por otro, la variable en memoria no era compartida, impidiendo el freno inmediato.
+- **Impacto:** Botón de detención 100% reactivo y efectivo en milisegundos en producción, y flujo de trabajo multiagente más ágil, limpio y consistente.
+

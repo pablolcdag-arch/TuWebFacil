@@ -28,7 +28,9 @@ import receiver
 import bot_engine
 from scripts.ops.send_outbound_campaign import (
     extraer_localidad,
-    procesar_campana
+    procesar_campana,
+    STOP_SIGNAL_FILE,
+    STATE_FILE
 )
 
 def banner(title):
@@ -242,6 +244,12 @@ def test_bot_engine_intercept_no_me_interesa():
 
 def test_send_outbound_campaign_script():
     banner("5. Despacho controlado en send_outbound_campaign.py (exclusión opt-outs, deduplicación, pacing)")
+
+    # Limpieza previa de señales
+    if os.path.exists(STOP_SIGNAL_FILE):
+        os.remove(STOP_SIGNAL_FILE)
+    if os.path.exists(STATE_FILE):
+        os.remove(STATE_FILE)
 
     # Registrar previamente un número en opt_outs
     opt_out_phone = "5491155550003"
@@ -461,6 +469,157 @@ def test_campaign_api_endpoints():
 
     print("✅ TEST 7 PASADO: Endpoints /admin/campaign/start, /status y /stop verificados con seguridad de sesión y concurrencia.")
 
+def test_multi_worker_disk_sync():
+    banner("8. Señal en disco y sincronización multi-worker (.campaign_stop y .campaign_state.json)")
+
+    import threading
+    import scripts.ops.send_outbound_campaign as outbound_mod
+    from scripts.ops.send_outbound_campaign import (
+        STOP_SIGNAL_FILE,
+        STATE_FILE,
+        _save_campaign_state_disk,
+        _load_campaign_state_disk,
+        start_campaign_task,
+        stop_campaign_task,
+        get_campaign_status,
+        procesar_campana
+    )
+
+    # 1. Verificar definición de rutas
+    assert STOP_SIGNAL_FILE.endswith(".campaign_stop")
+    assert STATE_FILE.endswith(".campaign_state.json")
+
+    # Limpieza inicial
+    if os.path.exists(STOP_SIGNAL_FILE):
+        os.remove(STOP_SIGNAL_FILE)
+    if os.path.exists(STATE_FILE):
+        os.remove(STATE_FILE)
+
+    try:
+        # 2. Verificar que stop_campaign_task() cree STOP_SIGNAL_FILE en disco
+        res_stop = stop_campaign_task()
+        assert res_stop["status"] == "stopping"
+        assert os.path.exists(STOP_SIGNAL_FILE), "stop_campaign_task debe crear STOP_SIGNAL_FILE en disco"
+
+        # 3. Verificar que _save_campaign_state_disk y _load_campaign_state_disk funcionen
+        mock_state = {
+            "status": "running",
+            "filename": "prospectos_test.csv",
+            "total": 100,
+            "enviados": 25,
+            "opt_out": 2,
+            "ya_enviados": 5,
+            "errores": 0,
+            "current_contact": "Comercio Simulado (5491100000000)",
+            "logs": ["[10:00:00] Test log"]
+        }
+        _save_campaign_state_disk(mock_state)
+        assert os.path.exists(STATE_FILE), "STATE_FILE debe existir en disco"
+
+        loaded = _load_campaign_state_disk()
+        assert loaded is not None
+        assert loaded["status"] == "running"
+        assert loaded["enviados"] == 25
+
+        # 4. Simular worker alternativo de Gunicorn: _campaign_task es None en memoria
+        # get_campaign_status() debe leer del disco
+        backup_task = outbound_mod._campaign_task
+        outbound_mod._campaign_task = None
+
+        status_from_disk = get_campaign_status()
+        assert status_from_disk["total"] == 100
+        assert status_from_disk["enviados"] == 25
+        assert status_from_disk["current_contact"] == "Comercio Simulado (5491100000000)"
+
+        # Restaurar memoria
+        outbound_mod._campaign_task = backup_task
+
+        # 5. Probar que STOP_SIGNAL_FILE interrumpe procesar_campana de inmediato
+        # Crear CSV temporal con 2 filas y delay largo (10 segundos)
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8-sig', suffix='.csv', delete=False) as f_csv:
+            tmp_csv_path = f_csv.name
+            writer = csv.writer(f_csv)
+            writer.writerow(["Nombre del Local", "Teléfono", "Dirección"])
+            writer.writerow(["Local Uno", "1122334455", "Av. Santa Fe 1000"])
+            writer.writerow(["Local Dos", "1166778899", "Av. Cabildo 2000"])
+
+        # Crear STOP_SIGNAL_FILE antes de la segunda fila
+        if os.path.exists(STOP_SIGNAL_FILE):
+            os.remove(STOP_SIGNAL_FILE)
+
+        thread_done = threading.Event()
+        res_container = {}
+
+        def run_proc():
+            res_container["res"] = procesar_campana(
+                input_path=tmp_csv_path,
+                delay=5,
+                dry_run=True
+            )
+            thread_done.set()
+
+        t = threading.Thread(target=run_proc, daemon=True)
+        t.start()
+
+        # Esperar 0.3s a que procese la fila 1 y entre al delay de pacing
+        time.sleep(0.3)
+        # Emitir señal en disco (como lo haría otro worker de Gunicorn)
+        with open(STOP_SIGNAL_FILE, 'w') as f_sig:
+            f_sig.write("STOP")
+
+        # La espera debe interrumpirse rápidamente (< 1.5 segundos en vez de esperar 5s)
+        finished_fast = thread_done.wait(timeout=2.0)
+        assert finished_fast, "procesar_campana debió interrumpir la espera por STOP_SIGNAL_FILE en disco"
+        res_camp = res_container.get("res")
+        assert res_camp is not None
+        assert res_camp["enviados"] == 1, "Solo debió procesar 1 fila antes de detenerse"
+
+        if os.path.exists(tmp_csv_path):
+            os.remove(tmp_csv_path)
+
+        # 6. Probar que start_campaign_task() elimina STOP_SIGNAL_FILE previo
+        # Crear STOP_SIGNAL_FILE
+        with open(STOP_SIGNAL_FILE, 'w') as f_sig:
+            f_sig.write("STOP")
+        assert os.path.exists(STOP_SIGNAL_FILE)
+
+        # Crear archivo sintético en leads/
+        leads_dir = os.path.join(BASE_DIR, "leads")
+        dummy_lead_name = "test_lead_dummy_start.csv"
+        dummy_lead_path = os.path.join(leads_dir, dummy_lead_name)
+        with open(dummy_lead_path, mode='w', encoding='utf-8-sig', newline='') as f_d:
+            writer = csv.writer(f_d)
+            writer.writerow(["Nombre del Local", "Teléfono", "Dirección"])
+            writer.writerow(["Local Test", "1144556677", "Av. Rivadavia 1000"])
+
+        # Asegurar que _campaign_task no figure como running
+        outbound_mod._campaign_task = None
+        if os.path.exists(STATE_FILE):
+            os.remove(STATE_FILE)
+
+        res_start = start_campaign_task(
+            filename=dummy_lead_name,
+            limit=1,
+            delay=0,
+            dry_run=True
+        )
+        assert res_start["status"] == "started"
+        assert not os.path.exists(STOP_SIGNAL_FILE), "start_campaign_task debió eliminar STOP_SIGNAL_FILE"
+
+        # Esperar que finalice
+        time.sleep(0.5)
+        if os.path.exists(dummy_lead_path):
+            os.remove(dummy_lead_path)
+
+    finally:
+        # Limpieza final
+        if os.path.exists(STOP_SIGNAL_FILE):
+            os.remove(STOP_SIGNAL_FILE)
+        if os.path.exists(STATE_FILE):
+            os.remove(STATE_FILE)
+
+    print("✅ TEST 8 PASADO: Señal .campaign_stop y estado .campaign_state.json sincronizan workers de forma desacoplada.")
+
 def main():
     print("\n" + "="*70)
     print("🚀 INICIANDO TEST SUITE: CAMPAÑA OUTBOUND & RESPUESTAS FSM")
@@ -473,6 +632,7 @@ def main():
     test_send_outbound_campaign_script()
     test_extraer_localidad_comprehensive()
     test_campaign_api_endpoints()
+    test_multi_worker_disk_sync()
 
     print("\n" + "="*70)
     print("🎉 TODOS LOS TESTS DE CAMPAÑA OUTBOUND PASARON (100% OK)")

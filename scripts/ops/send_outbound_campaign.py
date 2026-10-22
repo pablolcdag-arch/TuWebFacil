@@ -13,6 +13,7 @@ import os
 import sys
 import re
 import csv
+import json
 import time
 import datetime
 import logging
@@ -32,6 +33,33 @@ load_dotenv()
 
 from sender import send_whatsapp_template
 from bot_engine import is_opted_out
+
+# Archivos de señal y persistencia de estado para sincronización multi-worker (Gunicorn)
+STOP_SIGNAL_FILE = os.path.join(ROOT_DIR, "leads", ".campaign_stop")
+STATE_FILE = os.path.join(ROOT_DIR, "leads", ".campaign_state.json")
+
+def _save_campaign_state_disk(state_dict: Dict[str, Any]):
+    """Persiste el estado de la campaña en disco de forma atómica para sincronización multi-worker."""
+    try:
+        leads_dir = os.path.join(ROOT_DIR, "leads")
+        os.makedirs(leads_dir, exist_ok=True)
+        temp_file = STATE_FILE + f".tmp.{os.getpid()}"
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(state_dict, f, indent=2, ensure_ascii=False)
+        os.replace(temp_file, STATE_FILE)
+    except Exception as e:
+        logging.error(f"Error persistiendo estado de campaña en disco: {e}")
+
+def _load_campaign_state_disk() -> Optional[Dict[str, Any]]:
+    """Lee el estado persistido de la campaña desde disco si existe."""
+    if not os.path.exists(STATE_FILE):
+        return None
+    try:
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logging.error(f"Error leyendo estado de campaña desde disco: {e}")
+        return None
 
 # Configuración de Logging
 logging.basicConfig(
@@ -311,11 +339,11 @@ def procesar_campana(
         })
 
     for i, fila in enumerate(filas_a_procesar, 1):
-        if stop_event and stop_event.is_set():
+        if (stop_event and stop_event.is_set()) or os.path.exists(STOP_SIGNAL_FILE):
             msg_stop = f"🛑 Campaña detenida por solicitud de usuario tras procesar {i-1} filas."
             print(msg_stop)
             if progress_callback:
-                progress_callback({"log": msg_stop, "current_contact": ""})
+                progress_callback({"log": msg_stop, "current_contact": "", "status": "stopped"})
             break
 
         nombre = str(fila.get(mapa_cols["nombre"]) or "").strip()
@@ -419,17 +447,22 @@ def procesar_campana(
 
         # Pacing de seguridad entre llamadas
         if i < len(filas_a_procesar) and delay > 0:
-            if stop_event:
-                stopped = stop_event.wait(delay)
-                if stopped:
-                    msg_pacing_stop = "🛑 Campaña detenida durante el intervalo de espera (pacing)."
-                    print(msg_pacing_stop)
-                    if progress_callback:
-                        progress_callback({"log": msg_pacing_stop, "current_contact": ""})
+            stopped = False
+            tiempo_inicio_espera = time.time()
+            while (time.time() - tiempo_inicio_espera) < delay:
+                if (stop_event and stop_event.is_set()) or os.path.exists(STOP_SIGNAL_FILE):
+                    stopped = True
                     break
-            else:
-                print(f"     ⏳ Esperando {delay}s por pacing de seguridad...")
-                time.sleep(delay)
+                # Dormir en micro-intervalos de hasta 0.25s para detectar señales de detención sin demora
+                tiempo_restante = delay - (time.time() - tiempo_inicio_espera)
+                time.sleep(min(0.25, max(0.01, tiempo_restante)))
+
+            if stopped:
+                msg_pacing_stop = "🛑 Campaña detenida durante el intervalo de espera (pacing)."
+                print(msg_pacing_stop)
+                if progress_callback:
+                    progress_callback({"log": msg_pacing_stop, "current_contact": "", "status": "stopped"})
+                break
 
     # 5. Guardar CSV actualizado con marcas de tiempo
     with open(output_path, mode='w', encoding='utf-8-sig', newline='') as f:
@@ -522,13 +555,19 @@ class CampaignTask:
             "logs": list(self.logs)
         }
 
+    def persist_state(self):
+        """Guarda el estado actual en disco para que cualquier worker de Gunicorn lo lea."""
+        _save_campaign_state_disk(self.get_status())
+
     def run(self):
         self.status = "running"
         self.started_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.add_log(f"Iniciando campaña con '{self.filename}' (Límite: {self.limit}, Delay: {self.delay}s, Dry-run: {self.dry_run})")
+        self.persist_state()
 
         def progress_cb(update: Dict[str, Any]):
             with _campaign_lock:
+                if "status" in update: self.status = update["status"]
                 if "total" in update: self.total = update["total"]
                 if "enviados" in update: self.enviados = update["enviados"]
                 if "opt_out" in update: self.opt_out = update["opt_out"]
@@ -536,6 +575,7 @@ class CampaignTask:
                 if "errores" in update: self.errores = update["errores"]
                 if "current_contact" in update: self.current_contact = update["current_contact"]
                 if "log" in update: self.add_log(update["log"])
+                self.persist_state()
 
         try:
             res = procesar_campana(
@@ -554,7 +594,7 @@ class CampaignTask:
                 self.ya_enviados = res.get("ya_enviados", self.ya_enviados)
                 self.errores = res.get("errores", self.errores)
                 self.current_contact = ""
-                if self.stop_event.is_set():
+                if self.stop_event.is_set() or os.path.exists(STOP_SIGNAL_FILE):
                     self.status = "stopped"
                     self.add_log("Campaña detenida por el usuario.")
                 else:
@@ -570,9 +610,16 @@ class CampaignTask:
         finally:
             with _campaign_lock:
                 self.completed_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.persist_state()
+            # Una vez concluida la tarea (detenida o completada), limpiar la señal de detención
+            if os.path.exists(STOP_SIGNAL_FILE):
+                try:
+                    os.remove(STOP_SIGNAL_FILE)
+                except Exception:
+                    pass
 
 def start_campaign_task(filename: str, limit: int = 20, delay: int = 15, dry_run: bool = False) -> Dict[str, Any]:
-    """Inicia una tarea de campaña en segundo plano."""
+    """Inicia una tarea de campaña en segundo plano con soporte multi-worker."""
     global _campaign_task
     with _campaign_lock:
         if _campaign_task and _campaign_task.status == "running":
@@ -581,6 +628,22 @@ def start_campaign_task(filename: str, limit: int = 20, delay: int = 15, dry_run
                 "error": "Ya hay una campaña en ejecución actualmente.",
                 "filename": _campaign_task.filename
             }
+
+        # Comprobar si otro worker de Gunicorn tiene la campaña corriendo en disco
+        disk_state = _load_campaign_state_disk()
+        if disk_state and disk_state.get("status") == "running" and not os.path.exists(STOP_SIGNAL_FILE):
+            return {
+                "status": "already_running",
+                "error": "Ya hay una campaña en ejecución actualmente.",
+                "filename": disk_state.get("filename", "")
+            }
+
+        # 3. Eliminar señal de detención previa si existe
+        if os.path.exists(STOP_SIGNAL_FILE):
+            try:
+                os.remove(STOP_SIGNAL_FILE)
+            except Exception as e:
+                logging.warning(f"No se pudo eliminar STOP_SIGNAL_FILE: {e}")
 
         # Resolver ruta del archivo CSV
         # 1. En carpeta leads/
@@ -608,6 +671,7 @@ def start_campaign_task(filename: str, limit: int = 20, delay: int = 15, dry_run
             dry_run=dry_run
         )
         _campaign_task = task
+        task.persist_state()
 
         thread = threading.Thread(target=task.run, daemon=True, name=f"Campaign-{task.filename}")
         task.thread = thread
@@ -623,35 +687,55 @@ def start_campaign_task(filename: str, limit: int = 20, delay: int = 15, dry_run
         }
 
 def get_campaign_status() -> Dict[str, Any]:
-    """Retorna el estado de la campaña actual o idle."""
+    """Retorna el estado de la campaña unificado entre memoria local y disco."""
+    global _campaign_task
     with _campaign_lock:
-        if not _campaign_task:
-            return {
-                "status": "idle",
-                "message": "Sin campañas iniciadas recientemente.",
-                "total": 0,
-                "enviados": 0,
-                "opt_out": 0,
-                "ya_enviados": 0,
-                "errores": 0,
-                "current_contact": "",
-                "logs": []
-            }
-        return _campaign_task.get_status()
+        if _campaign_task:
+            status_dict = _campaign_task.get_status()
+            if os.path.exists(STOP_SIGNAL_FILE) and status_dict.get("status") == "running":
+                status_dict["status"] = "stopping"
+            return status_dict
+
+        disk_state = _load_campaign_state_disk()
+        if disk_state:
+            if os.path.exists(STOP_SIGNAL_FILE) and disk_state.get("status") == "running":
+                disk_state["status"] = "stopping"
+            return disk_state
+
+        return {
+            "status": "idle",
+            "message": "Sin campañas iniciadas recientemente.",
+            "total": 0,
+            "enviados": 0,
+            "opt_out": 0,
+            "ya_enviados": 0,
+            "errores": 0,
+            "current_contact": "",
+            "logs": []
+        }
 
 def stop_campaign_task() -> Dict[str, Any]:
-    """Detiene la campaña activa si existe."""
+    """Detiene la campaña activa escribiendo la señal en disco y señalando el evento en memoria."""
+    global _campaign_task
     with _campaign_lock:
-        if not _campaign_task or _campaign_task.status != "running":
-            return {
-                "status": "not_running",
-                "message": "No hay ninguna campaña ejecutándose en este momento."
-            }
-        _campaign_task.stop_event.set()
+        leads_dir = os.path.join(ROOT_DIR, "leads")
+        os.makedirs(leads_dir, exist_ok=True)
+        with open(STOP_SIGNAL_FILE, 'w') as f:
+            f.write(datetime.datetime.now().isoformat())
+
+        if _campaign_task:
+            _campaign_task.stop_event.set()
+
+        disk_state = _load_campaign_state_disk()
+        if disk_state and disk_state.get("status") == "running":
+            disk_state["status"] = "stopping"
+            _save_campaign_state_disk(disk_state)
+
+        filename = _campaign_task.filename if _campaign_task else (disk_state.get("filename", "") if disk_state else "")
         return {
             "status": "stopping",
-            "filename": _campaign_task.filename,
-            "message": "Se solicitó la detención de la campaña. Se completará el envío actual."
+            "filename": filename,
+            "message": "Señal de detención emitida a todos los workers."
         }
 
 def main():
@@ -663,6 +747,12 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Modo simulación: no realiza llamadas reales a la API de WhatsApp")
 
     args = parser.parse_args()
+
+    if os.path.exists(STOP_SIGNAL_FILE):
+        try:
+            os.remove(STOP_SIGNAL_FILE)
+        except Exception:
+            pass
 
     try:
         procesar_campana(
