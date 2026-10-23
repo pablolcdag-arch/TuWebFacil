@@ -254,6 +254,39 @@ Nutrición capilar: $22.000"""
     assert res_txt["items"][0]["precios"]["precio"] == "$18.000"
     print("  ✅ Fallback determinista de texto garantiza 'modo_vista': 'servicios' y 'categorias': [].")
 
+    # ------------------------------------------------------------------
+    # TEST 10: Ingesta de Inventario Real ERP / Disgraf
+    # ------------------------------------------------------------------
+    print("\n[TEST 10] Verificando inventario ERP Disgraf con identificadores y monedas auxiliares...")
+    data_erp = {
+        "Nº de producto": [101, 102],
+        "Rubro": ["Vinilos", "Lonas"],
+        "Nombre": ["Vinilo Oracal 651", "Lona Frontlight 440g"],
+        "Código": ["VIN-01", "LON-01"],
+        "Unidad": ["Metro", "M2"],
+        "Moneda costo": ["USD", "USD"],
+        "Precio ($)": [8500.0, 12000.0],
+        "Precio Final ($)": [10285.0, 14520.0]
+    }
+    df_erp = pd.DataFrame(data_erp)
+    res_erp = parse_tabular_data(df_erp, "Disgraf Maestro ERP")
+
+    assert res_erp["modo_vista"] == "catalogo"
+    # Validar que no tome 'Moneda costo' como precio
+    assert res_erp["columnas_pago"] == ["Precio ($)", "Precio Final ($)"], f"Columnas inesperadas: {res_erp['columnas_pago']}"
+    assert len(res_erp["categorias"]) == 2
+    assert [c["nombre"] for c in res_erp["categorias"]] == ["Vinilos", "Lonas"]
+
+    # Validar que tome 'Nombre' como descripción y 'Código' como código
+    item_0 = res_erp["items"][0]
+    assert item_0["servicio"] == "Vinilo Oracal 651", f"Esperado 'Vinilo Oracal 651', obtenido {item_0['servicio']!r}"
+    assert item_0["codigo"] == "VIN-01", f"Esperado 'VIN-01', obtenido {item_0['codigo']!r}"
+    assert item_0["categoria"] == "Vinilos"
+    assert item_0["unidad"] == "Metro"
+    assert item_0["precios"]["precio"] == "$8.500"
+    assert item_0["precios"]["precio_final"] == "$10.285"
+    print("  ✅ Inventario ERP Disgraf validado: 'Nombre' como descripción, 'Código' como código y precios filtrados.")
+
     print("\n" + "=" * 75)
     print("🎉 TODAS LAS PRUEBAS DE CATÁLOGOS Y SERVICIOS PASARON AL 100% (100% PASS)")
     print("=" * 75)

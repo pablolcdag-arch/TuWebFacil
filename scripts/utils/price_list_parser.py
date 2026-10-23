@@ -42,6 +42,56 @@ def is_article_keyword(col_name):
             return True
     return False
 
+def is_identifier_col(col_name):
+    """
+    Detecta si una columna es un identificador secuencial o numérico (ej: Nº de producto, ID, Nro, etc.)
+    que no debe ser seleccionado como nombre o descripción comercial.
+    """
+    raw_lower = str(col_name).strip().lower()
+    if any(m in raw_lower for m in ["nº", "n°"]):
+        return True
+    norm = normalize_text(col_name)
+    id_substrings = ["no de", "no.", "n de ", "id_", "id producto", "id articulo", "num de", "nro de"]
+    if any(m in norm for m in id_substrings):
+        return True
+    tokens = re.findall(r'[a-z0-9]+', norm)
+    if tokens and tokens[0] in {"id", "nro", "num", "numero"}:
+        return True
+    return False
+
+def select_best_service_col(candidate_cols):
+    """
+    Selecciona la mejor columna para el nombre del servicio o producto.
+    Descarta identificadores secuenciales/numéricos y prioriza nombres comerciales explícitos
+    sobre palabras genéricas como 'producto' o 'item'.
+    """
+    if not candidate_cols:
+        return None
+
+    # 1. Filtrar identificadores numéricos y columnas auxiliares (moneda, stock, etc.)
+    valid_cols = [c for c in candidate_cols if not is_identifier_col(c)]
+    aux_keywords = ["moneda", "stock", "utilidad", "alicuota", "tasa", "iva", "margen", "controla"]
+    clean_cols = [c for c in valid_cols if not any(aux in normalize_text(c) for aux in aux_keywords)]
+    
+    candidates_to_use = clean_cols if clean_cols else (valid_cols if valid_cols else candidate_cols)
+
+    # 2. Prioridad 1: Denominaciones comerciales explícitas
+    primary_name_keywords = ["nombre", "descripcion", "detalle", "servicio", "articulo"]
+    for c in candidates_to_use:
+        norm = normalize_text(c)
+        if any(k in norm for k in primary_name_keywords):
+            return c
+
+    # 3. Prioridad 2: Palabras genéricas
+    generic_name_keywords = ["producto", "item", "concepto", "zona", "tratamiento"]
+    for c in candidates_to_use:
+        norm = normalize_text(c)
+        if any(k in norm for k in generic_name_keywords):
+            return c
+
+    # 4. Fallback: Primera columna disponible
+    return candidates_to_use[0]
+
 def format_price(val):
     """
     Formatea importes como string monetario normalizado argentino:
@@ -145,11 +195,15 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
             break
 
     # 3. Identificar columnas de precios
+    auxiliary_price_keywords = ["moneda", "stock", "utilidad", "alicuota", "tasa", "iva", "margen", "controla"]
     price_cols = []
     for col in df.columns:
         if col in [category_col, carta_col, unit_col]:
             continue
         norm = normalize_text(col)
+        # Ignorar columnas auxiliares que no son precios de venta (ej: moneda costo, alícuota IVA, stock)
+        if any(aux in norm for aux in auxiliary_price_keywords):
+            continue
         if any(k in norm for k in payment_keywords):
             price_cols.append(col)
 
@@ -157,15 +211,7 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
     remaining_cols = [c for c in df.columns if c not in [category_col, carta_col, unit_col] and c not in price_cols]
 
     if not price_cols:
-        name_keywords = ["servicio", "zona", "tratamiento", "descripcion", "producto", "detalle", "item", "concepto", "nombre", "articulo"]
-        service_col = None
-        for c in remaining_cols:
-            norm = normalize_text(c)
-            if any(k in norm for k in name_keywords):
-                service_col = c
-                break
-        if not service_col and remaining_cols:
-            service_col = remaining_cols[0]
+        service_col = select_best_service_col(remaining_cols)
         if service_col:
             price_cols = [c for c in remaining_cols if c != service_col]
             code_col = None
@@ -188,15 +234,7 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
             if exp_code_col:
                 code_col = exp_code_col
                 other_cols = [c for c in remaining_cols if c != exp_code_col]
-                name_keywords = ["descripcion", "servicio", "producto", "articulo", "detalle", "item", "concepto", "nombre", "zona", "tratamiento"]
-                service_col = None
-                for c in other_cols:
-                    norm = normalize_text(c)
-                    if any(k in norm for k in name_keywords):
-                        service_col = c
-                        break
-                if not service_col:
-                    service_col = other_cols[0]
+                service_col = select_best_service_col(other_cols)
             else:
                 art_col = None
                 for c in remaining_cols:
@@ -205,22 +243,27 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
                         break
                 if art_col:
                     other_cols = [c for c in remaining_cols if c != art_col]
-                    desc_keywords = ["descripcion", "detalle", "nombre", "concepto", "servicio"]
-                    desc_col = None
-                    for c in other_cols:
-                        norm = normalize_text(c)
-                        if any(k in norm for k in desc_keywords):
-                            desc_col = c
-                            break
-                    if desc_col:
+                    desc_col = select_best_service_col(other_cols)
+                    if desc_col and any(k in normalize_text(desc_col) for k in ["descripcion", "detalle", "nombre", "concepto", "servicio"]):
                         code_col = art_col
                         service_col = desc_col
                     else:
                         service_col = art_col
                         code_col = None
                 else:
-                    service_col = remaining_cols[0]
-                    code_col = None
+                    # Detectar si alguna columna restante es un identificador secuencial o ID (ej: 'Nº de producto', 'ID')
+                    id_col = None
+                    for c in remaining_cols:
+                        if is_identifier_col(c):
+                            id_col = c
+                            break
+                    if id_col:
+                        code_col = id_col
+                        other_cols = [c for c in remaining_cols if c != id_col]
+                        service_col = select_best_service_col(other_cols)
+                    else:
+                        service_col = select_best_service_col(remaining_cols)
+                        code_col = None
 
     if not price_cols:
         raise ValueError("No se encontraron columnas de precios en la tabla.")
@@ -241,6 +284,8 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
             key = "tarjeta"
         elif "debito" in norm_key:
             key = "debito"
+        elif "final" in norm_key:
+            key = "precio_final"
         elif "lista" in norm_key:
             key = "lista"
         elif "precio" in norm_key or "valor" in norm_key:
