@@ -492,15 +492,17 @@ Todo desarrollo significativo sigue este bucle:
 
 **Regla para el Coordinador:** al redactar prompts para el Implementador o Generador de Contenido, **NUNCA** pedirle que verifique o audite su propio código o copy. El prompt debe terminar indicando que avise al terminar, para que el usuario pase el trabajo al Verificador.
 
-**Regla de Reporte Unificado (Bloque Único Copiable):**
-Cada prompt redactado por el Coordinador para un **Implementador** o **Verificador** debe exigir obligatoriamente que el agente finalice su intervención emitiendo un **único bloque de código markdown (de 4 acentos graves ````markdown ... ````)** titulado `# REPORTE PARA EL COORDINADOR`.
-- **Propósito:** El usuario solo debe hacer un clic en el botón nativo de "Copy" de ese bloque y pegarlo íntegro en la conversación del Coordinador, evitando scroll innecesario, selección manual con el mouse o copias de logs crudos intermedios.
+**Regla de Reporte Unificado (Bloque Único Copiable y Ultraconciso):**
+Cada prompt redactado por el Coordinador para un **Implementador** o **Verificador** (sea Backend o Frontend) debe exigir obligatoriamente que el agente finalice su intervención emitiendo un **único bloque de código markdown de 4 acentos graves (````markdown ... ````)** titulado `# REPORTE PARA EL COORDINADOR`.
+- **Propósito:** El usuario solo debe hacer un clic en el botón nativo de "Copy" de ese bloque y pegarlo íntegro en la conversación del Coordinador, para que el Coordinador le entregue de inmediato el siguiente prompt o proceda al deploy.
+- **Longitud máxima estricta:** **Máximo 8 a 12 líneas ejecutivas**.
+- **PROHIBIDO TERMINANTEMENTE:** Volcar código fuente completo, archivos enteros, fragmentos HTML gigantes o logs crudos completos dentro de este bloque. El Coordinador tiene acceso directo al repositorio para inspeccionar diffs y correr pruebas.
 - **Estructura obligatoria del bloque copiable:**
   1. Rol y archivos modificados/auditados.
-  2. Resumen ejecutivo de acciones realizadas (o puntos auditados).
-  3. Resultado sintético de pruebas automatizadas ejecutadas (ej: 8/8 tests 100% OK, cero regresiones).
+  2. Resumen ejecutivo en 2 líneas de lo realizado o auditado.
+  3. Resultado sintético de tests (ej: `9/9 tests 100% OK`).
   4. Veredicto formal (en Verificadores: `APROBADO ✅` o `RECHAZADO ❌`).
-  5. Confirmación de restricciones operativas cumplidas (cero commits, cero push, cero deploys).
+  5. Siguiente paso sugerido para el usuario (ej: *"Copiar al Coordinador para solicitar prompt de Verificación"* o *"Copiar al Coordinador para Deploy"*).
 
 **Regla para el Verificador:** si falla 3 veces en la misma subtarea → escalar al usuario con diagnóstico.
 

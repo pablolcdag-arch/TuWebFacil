@@ -127,6 +127,433 @@
     {% set first_col = columnas[0] %}
     {% set first_col_clean = first_col | lower | replace(' ', '_') %}
 
+    {% set is_catalog_mode = False %}
+    {% if web_content.lista_precios.modo_vista == 'catalogo' %}
+        {% set is_catalog_mode = True %}
+    {% elif web_content.lista_precios.modo_vista != 'servicios' and (web_content.lista_precios.categorias or (web_content.lista_precios['items'] and (web_content.lista_precios['items'][0].codigo or web_content.lista_precios['items'][0].unidad))) %}
+        {% set is_catalog_mode = True %}
+    {% endif %}
+
+    {% if is_catalog_mode %}
+    <!-- ================================================================= -->
+    <!-- MODO CATÁLOGO INTERACTIVO (B2B / PRODUCTOS FÍSICOS / MAYORISTA)   -->
+    <!-- ================================================================= -->
+    {% set cat_carta_map = {} %}
+    {% if web_content.lista_precios.categorias %}
+        {% for c in web_content.lista_precios.categorias %}
+            {% if c.carta_url %}
+                {% set _ = cat_carta_map.update({c.nombre: c.carta_url}) %}
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    <section id="precios" class="py-24 container mx-auto px-6">
+        <!-- Encabezado de la Sección de Catálogo -->
+        <div class="text-center mb-12">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-3">
+                <i class="fas fa-boxes"></i> Catálogo de Productos
+            </div>
+            <h2 class="text-3xl md:text-4xl font-black mb-4 uppercase tracking-tighter italic text-slate-900">
+                {{ web_content.lista_precios.titulo or 'Catálogo de Productos' }}
+            </h2>
+            <div class="w-24 h-2 bg-gradient-premium mx-auto rounded-full mb-4"></div>
+            <p class="text-slate-600 text-base md:text-lg max-w-2xl mx-auto">
+                Explorá nuestro catálogo, seleccioná las cantidades deseadas y enviá tu pedido consolidado para cotizar por WhatsApp.
+            </p>
+        </div>
+
+        <!-- Grid de Categorías Superior (Estilo Disgraf) -->
+        {% set categorias = web_content.lista_precios.categorias or [] %}
+        {% if categorias and categorias|length > 0 %}
+        <div class="mb-10" id="catalog-categories-container">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                    <i class="fas fa-layer-group text-primary"></i> Categorías Disponibles
+                </h3>
+                <button id="catalog-reset-cat-btn"
+                        type="button"
+                        class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition shadow-xs">
+                    <span>Ver todos los productos</span>
+                    <i class="fas fa-times text-[10px] text-slate-400"></i>
+                </button>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4" id="catalog-categories-grid">
+                {% for cat in categorias %}
+                {% set cat_name = cat.nombre or ('Categoría ' ~ loop.index) %}
+                {% set cat_items = web_content.lista_precios['items'] | selectattr('categoria', 'equalto', cat_name) | list if web_content.lista_precios['items'] else [] %}
+                {% set cat_count = cat_items|length %}
+                <div class="catalog-category-card group cursor-pointer bg-white border border-slate-200 hover:border-primary/50 hover:shadow-md rounded-2xl p-3 sm:p-4 text-center transition-all duration-200"
+                     data-category="{{ cat_name }}"
+                     role="button"
+                     tabindex="0"
+                     aria-label="Filtrar por {{ cat_name }}">
+                    <div class="w-full h-20 sm:h-24 rounded-xl overflow-hidden mb-2 bg-slate-50 flex items-center justify-center border border-slate-100 relative group-hover:scale-[1.02] transition-transform">
+                        {% if cat.foto_url %}
+                        <img src="{{ cat.foto_url }}" alt="{{ cat_name }}" class="w-full h-full object-cover">
+                        {% else %}
+                        <div class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center text-lg">
+                            <i class="fas fa-boxes"></i>
+                        </div>
+                        {% endif %}
+                        {% if cat.carta_url %}
+                        <span class="absolute top-1.5 right-1.5 bg-indigo-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
+                            🎨 Carta
+                        </span>
+                        {% endif %}
+                    </div>
+                    <h4 class="font-bold text-slate-800 text-xs sm:text-sm line-clamp-1 group-hover:text-primary transition-colors">
+                        {{ cat_name }}
+                    </h4>
+                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">
+                        {{ cat_count }} producto{{ 's' if cat_count != 1 else '' }}
+                    </p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Buscador en Tiempo Real -->
+        <div class="relative max-w-xl mx-auto mb-8">
+            <div class="relative flex items-center">
+                <i class="fas fa-search absolute left-4 text-slate-400 text-sm"></i>
+                <input type="text"
+                       id="catalog-search-input"
+                       placeholder="Buscar por producto (ej: Oracal, Lona) o código (ej: 1374)..."
+                       class="w-full pl-11 pr-10 py-3.5 bg-white border border-slate-200/90 rounded-2xl shadow-sm text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                       autocomplete="off">
+                <button type="button"
+                        id="catalog-search-clear"
+                        class="hidden absolute right-3.5 text-slate-400 hover:text-slate-600 p-1"
+                        aria-label="Limpiar búsqueda">
+                    <i class="fas fa-times-circle"></i>
+                </button>
+            </div>
+            <div id="catalog-active-filter-bar" class="hidden flex items-center gap-2 mt-2 px-1">
+                <span class="text-xs text-slate-500">Filtrando por categoría:</span>
+                <span id="catalog-active-filter-label" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary">
+                    <span></span>
+                    <i class="fas fa-times text-[10px] cursor-pointer hover:text-red-500" id="catalog-active-filter-remove" title="Quitar filtro"></i>
+                </span>
+            </div>
+        </div>
+
+        <!-- Estado Sin Resultados -->
+        <div id="catalog-no-results" class="hidden text-center py-12 px-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200 mb-8 max-w-md mx-auto">
+            <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-search text-xl"></i>
+            </div>
+            <p class="font-bold text-slate-800 text-base mb-1">No se encontraron productos</p>
+            <p class="text-slate-500 text-sm mb-4">No encontramos coincidencias para tu búsqueda o filtro.</p>
+            <button type="button"
+                    id="catalog-clear-all-filters-btn"
+                    class="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold shadow-sm transition">
+                Ver todos los productos
+            </button>
+        </div>
+
+        <!-- Vista Desktop / Tablet (hidden md:block) -->
+        <div class="hidden md:block overflow-hidden bg-white rounded-3xl border border-slate-200/80 shadow-lg" id="catalog-desktop-table-wrapper">
+            <table class="w-full text-left border-collapse" id="catalog-desktop-table">
+                <thead>
+                    <tr class="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                        <th scope="col" class="py-5 px-4 text-center w-24">Código</th>
+                        <th scope="col" class="py-5 px-6">Producto / Descripción</th>
+                        {% for col in columnas %}
+                        <th scope="col" class="py-5 px-6 text-center">{{ col }}</th>
+                        {% endfor %}
+                        <th scope="col" class="py-5 px-6 text-center w-48">Cantidad / Añadir</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-slate-700 text-sm">
+                    {% for item in web_content.lista_precios['items'] %}
+                    {% set item_carta = item.carta_url if item.carta_url else (cat_carta_map.get(item.categoria, '')) %}
+                    {% set item_first_price = '' %}
+                    {% if item.precios is mapping %}
+                        {% set item_first_price = item.precios.get(first_col_clean) or item.precios.get(first_col) or item.precios.get(first_col|lower) %}
+                        {% if not item_first_price %}
+                            {% if 'efectivo' in first_col_clean %}{% set item_first_price = item.precios.get('efectivo') %}
+                            {% elif 'transf' in first_col_clean %}{% set item_first_price = item.precios.get('transferencia') %}
+                            {% elif 'tarjeta' in first_col_clean %}{% set item_first_price = item.precios.get('tarjeta') %}
+                            {% elif 'lista' in first_col_clean %}{% set item_first_price = item.precios.get('lista') %}
+                            {% elif 'precio' in first_col_clean %}{% set item_first_price = item.precios.get('precio') %}
+                            {% endif %}
+                        {% endif %}
+                        {% if not item_first_price and item.precios.values() %}
+                            {% set item_first_price = (item.precios.values() | list)[0] %}
+                        {% endif %}
+                    {% endif %}
+                    <tr class="catalog-table-row hover:bg-slate-50/70 transition-colors"
+                        data-item-index="{{ loop.index0 }}"
+                        data-code="{{ item.codigo or '' }}"
+                        data-name="{{ item.servicio }}"
+                        data-unit="{{ item.unidad or '' }}"
+                        data-category="{{ item.categoria or '' }}">
+                        <td class="py-5 px-4 text-center">
+                            {% if item.codigo %}
+                            <span class="font-mono text-xs font-bold px-2 py-1 rounded-md bg-slate-100 text-slate-800 border border-slate-200 tracking-wider">
+                                #{{ item.codigo }}
+                            </span>
+                            {% else %}
+                            <span class="text-slate-300 text-xs">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-5 px-6">
+                            <div class="font-bold text-slate-900 text-base flex flex-wrap items-center gap-2">
+                                <span>{{ item.servicio }}</span>
+                                {% if item.unidad %}
+                                <span class="inline-block text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
+                                    {{ item.unidad }}
+                                </span>
+                                {% endif %}
+                                {% if item_carta %}
+                                <button type="button"
+                                        class="catalog-open-carta-btn inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition shadow-xs"
+                                        data-url="{{ item_carta }}"
+                                        data-title="{{ item.servicio }} - Carta de Colores">
+                                    🎨 Ver Catálogo
+                                </button>
+                                {% endif %}
+                            </div>
+                            {% if item.categoria %}
+                            <div class="text-xs text-slate-400 font-medium mt-0.5">
+                                {{ item.categoria }}
+                            </div>
+                            {% endif %}
+                        </td>
+                        {% for col in columnas %}
+                        {% set col_clean = col | lower | replace(' ', '_') %}
+                        {% set p_val = '-' %}
+                        {% if item.precios is mapping %}
+                            {% set p_val = item.precios.get(col_clean) or item.precios.get(col) or item.precios.get(col|lower) %}
+                            {% if not p_val %}
+                                {% if 'efectivo' in col_clean %}{% set p_val = item.precios.get('efectivo') %}
+                                {% elif 'transf' in col_clean %}{% set p_val = item.precios.get('transferencia') %}
+                                {% elif 'tarjeta' in col_clean %}{% set p_val = item.precios.get('tarjeta') %}
+                                {% elif 'lista' in col_clean %}{% set p_val = item.precios.get('lista') %}
+                                {% elif 'precio' in col_clean %}{% set p_val = item.precios.get('precio') %}
+                                {% endif %}
+                            {% endif %}
+                            {% if not p_val %}{% set p_val = '-' %}{% endif %}
+                        {% endif %}
+                        <td class="py-5 px-6 text-center font-bold text-slate-800">
+                            {{ p_val }}
+                        </td>
+                        {% endfor %}
+                        <td class="py-5 px-6 text-center">
+                            <div class="flex items-center justify-center gap-2">
+                                <div class="inline-flex items-center border border-slate-200 rounded-xl bg-slate-50 overflow-hidden shadow-inner">
+                                    <button type="button" class="catalog-qty-minus px-2.5 py-1.5 text-slate-600 hover:bg-slate-200 font-bold transition text-xs select-none" aria-label="Disminuir cantidad">-</button>
+                                    <input type="number" min="1" value="1" class="catalog-qty-input w-10 text-center bg-transparent text-xs font-bold text-slate-800 border-0 focus:ring-0 p-0 select-all" aria-label="Cantidad para {{ item.servicio }}">
+                                    <button type="button" class="catalog-qty-plus px-2.5 py-1.5 text-slate-600 hover:bg-slate-200 font-bold transition text-xs select-none" aria-label="Aumentar cantidad">+</button>
+                                </div>
+                                <button type="button"
+                                        class="catalog-add-btn px-3 py-1.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition"
+                                        data-item-index="{{ loop.index0 }}"
+                                        data-code="{{ item.codigo or '' }}"
+                                        data-name="{{ item.servicio }}"
+                                        data-unit="{{ item.unidad or '' }}"
+                                        data-category="{{ item.categoria or '' }}"
+                                        data-primary-price="{{ item_first_price }}">
+                                    <i class="fas fa-plus text-[10px]"></i>
+                                    <span>Añadir</span>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Vista Mobile (block md:hidden) -->
+        <div class="block md:hidden" id="catalog-mobile-cards-container">
+            {% for item in web_content.lista_precios['items'] %}
+            {% set item_carta = item.carta_url if item.carta_url else (cat_carta_map.get(item.categoria, '')) %}
+            {% set item_first_price = '' %}
+            {% if item.precios is mapping %}
+                {% set item_first_price = item.precios.get(first_col_clean) or item.precios.get(first_col) or item.precios.get(first_col|lower) %}
+                {% if not item_first_price %}
+                    {% if 'efectivo' in first_col_clean %}{% set item_first_price = item.precios.get('efectivo') %}
+                    {% elif 'transf' in first_col_clean %}{% set item_first_price = item.precios.get('transferencia') %}
+                    {% elif 'tarjeta' in first_col_clean %}{% set item_first_price = item.precios.get('tarjeta') %}
+                    {% elif 'lista' in first_col_clean %}{% set item_first_price = item.precios.get('lista') %}
+                    {% elif 'precio' in first_col_clean %}{% set item_first_price = item.precios.get('precio') %}
+                    {% endif %}
+                {% endif %}
+                {% if not item_first_price and item.precios.values() %}
+                    {% set item_first_price = (item.precios.values() | list)[0] %}
+                {% endif %}
+            {% endif %}
+            <div class="catalog-product-card bg-white border border-slate-200/90 rounded-2xl p-4 shadow-sm mb-3 transition-all"
+                 data-item-index="{{ loop.index0 }}"
+                 data-code="{{ item.codigo or '' }}"
+                 data-name="{{ item.servicio }}"
+                 data-unit="{{ item.unidad or '' }}"
+                 data-category="{{ item.categoria or '' }}">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        {% if item.codigo %}
+                        <span class="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                            #{{ item.codigo }}
+                        </span>
+                        {% endif %}
+                        {% if item.categoria %}
+                        <span class="text-[11px] font-semibold text-slate-500 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                            {{ item.categoria }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if item_carta %}
+                    <button type="button"
+                            class="catalog-open-carta-btn inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition shrink-0"
+                            data-url="{{ item_carta }}"
+                            data-title="{{ item.servicio }} - Carta de Colores">
+                        🎨 Carta
+                    </button>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <h4 class="font-bold text-slate-900 text-base leading-snug">
+                        {{ item.servicio }}
+                    </h4>
+                    {% if item.unidad %}
+                    <span class="inline-block text-xs text-slate-500 font-medium mt-0.5">
+                        Presentación: <strong class="text-slate-700">{{ item.unidad }}</strong>
+                    </span>
+                    {% endif %}
+                </div>
+
+                <div class="bg-slate-50 rounded-xl p-2.5 mb-3 border border-slate-100 grid {{ 'grid-cols-2' if columnas|length > 1 else 'grid-cols-1' }} gap-2">
+                    {% for col in columnas %}
+                    {% set col_clean = col | lower | replace(' ', '_') %}
+                    {% set p_val = '-' %}
+                    {% if item.precios is mapping %}
+                        {% set p_val = item.precios.get(col_clean) or item.precios.get(col) or item.precios.get(col|lower) %}
+                        {% if not p_val %}
+                            {% if 'efectivo' in col_clean %}{% set p_val = item.precios.get('efectivo') %}
+                            {% elif 'transf' in col_clean %}{% set p_val = item.precios.get('transferencia') %}
+                            {% elif 'tarjeta' in col_clean %}{% set p_val = item.precios.get('tarjeta') %}
+                            {% elif 'lista' in col_clean %}{% set p_val = item.precios.get('lista') %}
+                            {% elif 'precio' in col_clean %}{% set p_val = item.precios.get('precio') %}
+                            {% endif %}
+                        {% endif %}
+                        {% if not p_val %}{% set p_val = '-' %}{% endif %}
+                    {% endif %}
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-slate-400 block">{{ col }}</span>
+                        <span class="text-sm font-extrabold text-slate-800">{{ p_val }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="flex items-center justify-between gap-3 pt-1 border-t border-slate-100">
+                    <div class="inline-flex items-center border border-slate-200 rounded-xl bg-slate-50 overflow-hidden shadow-inner">
+                        <button type="button" class="catalog-qty-minus px-3 py-1.5 text-slate-600 hover:bg-slate-200 font-bold transition text-xs select-none" aria-label="Disminuir cantidad">-</button>
+                        <input type="number" min="1" value="1" class="catalog-qty-input w-10 text-center bg-transparent text-xs font-bold text-slate-800 border-0 focus:ring-0 p-0 select-all" aria-label="Cantidad para {{ item.servicio }}">
+                        <button type="button" class="catalog-qty-plus px-3 py-1.5 text-slate-600 hover:bg-slate-200 font-bold transition text-xs select-none" aria-label="Aumentar cantidad">+</button>
+                    </div>
+                    <button type="button"
+                            class="catalog-add-btn flex-1 py-2 px-4 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
+                            data-item-index="{{ loop.index0 }}"
+                            data-code="{{ item.codigo or '' }}"
+                            data-name="{{ item.servicio }}"
+                            data-unit="{{ item.unidad or '' }}"
+                            data-category="{{ item.categoria or '' }}"
+                            data-primary-price="{{ item_first_price }}">
+                        <i class="fas fa-plus text-xs"></i>
+                        <span>Añadir</span>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Lightbox Modal para Carta de Colores / Catálogo -->
+        <div id="catalog-lightbox-modal"
+             class="hidden fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 opacity-0 transition-opacity duration-200"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="catalog-lightbox-title">
+            <div class="relative max-w-4xl w-full max-h-[92vh] bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col scale-95 transition-transform duration-200" id="catalog-lightbox-box">
+                <div class="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 bg-slate-50/90">
+                    <div class="flex items-center gap-2 min-w-0 pr-2">
+                        <span class="text-base sm:text-lg">🎨</span>
+                        <h3 id="catalog-lightbox-title" class="font-bold text-slate-800 text-sm sm:text-base truncate">
+                            Carta de Colores / Catálogo
+                        </h3>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <a id="catalog-lightbox-external"
+                           href="#"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition">
+                            <i class="fas fa-external-link-alt text-[10px]"></i>
+                            <span class="hidden sm:inline">Abrir en pestaña</span>
+                        </a>
+                        <button id="catalog-lightbox-close"
+                                type="button"
+                                class="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-200/60 text-lg leading-none transition"
+                                aria-label="Cerrar modal">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-auto p-4 sm:p-6 flex items-center justify-center bg-slate-900/5 min-h-[300px]">
+                    <img id="catalog-lightbox-img" src="" alt="Carta de Colores" class="max-w-full max-h-[75vh] object-contain rounded-xl shadow-md hidden">
+                    <iframe id="catalog-lightbox-frame" src="" class="w-full h-[70vh] border-0 rounded-xl hidden"></iframe>
+                    <div id="catalog-lightbox-fallback" class="hidden text-center p-8">
+                        <p class="text-slate-600 mb-4 font-medium">Este documento se visualiza mejor en una pestaña externa.</p>
+                        <a id="catalog-lightbox-fallback-link" href="#" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow hover:bg-indigo-700 transition">
+                            Abrir documento <i class="fas fa-arrow-right ml-1"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Carrito Flotante Consolidado (WhatsApp) -->
+        <div id="catalog-cart-bar"
+             class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[160] w-[95%] max-w-2xl bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/60 p-3 sm:p-4 transition-all duration-300">
+            <div class="flex items-center justify-between gap-3 sm:gap-4">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center text-primary shrink-0 text-base sm:text-lg">
+                        <i class="fas fa-shopping-cart"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-baseline gap-1.5 flex-wrap">
+                            <span id="catalog-cart-count" class="font-black text-white text-base sm:text-lg">0</span>
+                            <span class="text-xs text-slate-300 font-medium">artículo<span id="catalog-cart-count-plural">s</span></span>
+                        </div>
+                        <div class="text-[11px] sm:text-xs text-slate-400">
+                            Total est.: <strong id="catalog-cart-total" class="text-emerald-400 font-extrabold text-xs sm:text-sm">$0</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 shrink-0">
+                    <button id="catalog-cart-clear"
+                            type="button"
+                            class="px-2.5 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl text-xs font-semibold transition"
+                            title="Vaciar carrito">
+                        Vaciar
+                    </button>
+                    <a href="#"
+                       id="catalog-cart-wa-btn"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="px-3.5 sm:px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 transition">
+                        <i class="fab fa-whatsapp text-base"></i>
+                        <span class="hidden sm:inline">Enviar presupuesto por WhatsApp</span>
+                        <span class="sm:hidden">Pedir Presupuesto</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+    {% else %}
     <section id="precios" class="py-24 container mx-auto px-6">
         <!-- Encabezado de la Sección -->
         <div class="text-center mb-12">
@@ -492,6 +919,7 @@
         </div>
     </section>
     {% endif %}
+    {% endif %}
 
     <footer class="bg-slate-950 text-white py-24">
         <div class="container mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-20">
@@ -537,6 +965,437 @@
         lucide.createIcons();
 
         {% if web_content.lista_precios and web_content.lista_precios.get('items') %}
+        {% if is_catalog_mode %}
+        // --- GESTIÓN DE CATÁLOGO COMERCIAL B2B ---
+        (function() {
+            const businessTitle = {{ (web_content.titulo_web or 'Negocio') | tojson }};
+            const cleanPhone = {{ ((web_content.whatsapp_contacto if (web_content and web_content.whatsapp_contacto) else (client.phone if (client and client.phone) else '')) | string | replace('+', '') | replace(' ', '') | replace('-', '')) | tojson }};
+
+            // Estado reactivo del catálogo
+            let selectedCategory = null;
+            let searchQuery = '';
+            const cart = {};
+
+            // Helper de parseo numérico para importes argentinos
+            function parsePriceNum(val) {
+                if (!val || val === '-') return 0;
+                let s = String(val).trim();
+                if (s.startsWith('$')) s = s.substring(1).trim();
+                if (s.includes(',') && s.includes('.')) {
+                    return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+                } else if (s.includes(',')) {
+                    return parseFloat(s.replace(',', '.')) || 0;
+                } else if (s.includes('.')) {
+                    const parts = s.split('.');
+                    if (parts.length > 2 || (parts[1] && parts[1].length === 3)) {
+                        return parseFloat(s.replace(/\./g, '')) || 0;
+                    } else {
+                        return parseFloat(s) || 0;
+                    }
+                }
+                return parseFloat(s) || 0;
+            }
+
+            // Helper de formato moneda argentina
+            function formatARS(num, forceDecimals = false) {
+                const hasCents = forceDecimals || ((Math.round(num * 100) % 100) !== 0);
+                const parts = num.toFixed(hasCents ? 2 : 0).split('.');
+                const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                return hasCents ? (`$${intPart},${parts[1]}`) : (`$${intPart}`);
+            }
+
+            // 1. Filtrado de Categorías y Búsqueda en Tiempo Real
+            function applyFilters() {
+                const searchInput = document.getElementById('catalog-search-input');
+                searchQuery = (searchInput ? searchInput.value : '').trim().toLowerCase();
+
+                const clearSearchBtn = document.getElementById('catalog-search-clear');
+                if (clearSearchBtn) {
+                    if (searchQuery.length > 0) clearSearchBtn.classList.remove('hidden');
+                    else clearSearchBtn.classList.add('hidden');
+                }
+
+                // Resaltado de tarjetas de categoría
+                document.querySelectorAll('.catalog-category-card').forEach(card => {
+                    const catName = card.getAttribute('data-category');
+                    if (selectedCategory && catName === selectedCategory) {
+                        card.classList.add('border-primary', 'ring-2', 'ring-primary/20', 'bg-primary/5');
+                        card.classList.remove('border-slate-200');
+                    } else {
+                        card.classList.remove('border-primary', 'ring-2', 'ring-primary/20', 'bg-primary/5');
+                        card.classList.add('border-slate-200');
+                    }
+                });
+
+                // Indicador de categoría activa
+                const resetBtn = document.getElementById('catalog-reset-cat-btn');
+                const activeFilterBar = document.getElementById('catalog-active-filter-bar');
+                const activeFilterLabel = document.getElementById('catalog-active-filter-label');
+                if (selectedCategory) {
+                    if (resetBtn) {
+                        resetBtn.classList.remove('hidden');
+                        resetBtn.classList.add('inline-flex');
+                    }
+                    if (activeFilterBar) activeFilterBar.classList.remove('hidden');
+                    if (activeFilterLabel) {
+                        const span = activeFilterLabel.querySelector('span');
+                        if (span) span.textContent = selectedCategory;
+                    }
+                } else {
+                    if (resetBtn) {
+                        resetBtn.classList.add('hidden');
+                        resetBtn.classList.remove('inline-flex');
+                    }
+                    if (activeFilterBar) activeFilterBar.classList.add('hidden');
+                }
+
+                let visibleCount = 0;
+
+                // Filtrar filas de tabla desktop
+                document.querySelectorAll('.catalog-table-row').forEach(row => {
+                    const cat = row.getAttribute('data-category') || '';
+                    const name = (row.getAttribute('data-name') || '').toLowerCase();
+                    const code = (row.getAttribute('data-code') || '').toLowerCase();
+
+                    const matchesCategory = !selectedCategory || cat === selectedCategory;
+                    const matchesSearch = !searchQuery || name.includes(searchQuery) || code.includes(searchQuery);
+
+                    if (matchesCategory && matchesSearch) {
+                        row.style.display = '';
+                        visibleCount++;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+
+                // Filtrar tarjetas mobile
+                document.querySelectorAll('.catalog-product-card').forEach(card => {
+                    const cat = card.getAttribute('data-category') || '';
+                    const name = (card.getAttribute('data-name') || '').toLowerCase();
+                    const code = (card.getAttribute('data-code') || '').toLowerCase();
+
+                    const matchesCategory = !selectedCategory || cat === selectedCategory;
+                    const matchesSearch = !searchQuery || name.includes(searchQuery) || code.includes(searchQuery);
+
+                    if (matchesCategory && matchesSearch) {
+                        card.style.display = '';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+
+                // Estado de Sin Resultados
+                const noResultsEl = document.getElementById('catalog-no-results');
+                const tableWrapper = document.getElementById('catalog-desktop-table-wrapper');
+                const mobileContainer = document.getElementById('catalog-mobile-cards-container');
+
+                if (visibleCount === 0) {
+                    if (noResultsEl) noResultsEl.classList.remove('hidden');
+                    if (tableWrapper) tableWrapper.classList.add('hidden');
+                    if (mobileContainer) mobileContainer.classList.add('hidden');
+                } else {
+                    if (noResultsEl) noResultsEl.classList.add('hidden');
+                    if (tableWrapper) tableWrapper.classList.remove('hidden');
+                    if (mobileContainer) mobileContainer.classList.remove('hidden');
+                }
+            }
+
+            // Eventos de Categoría
+            document.querySelectorAll('.catalog-category-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    const cat = this.getAttribute('data-category');
+                    if (selectedCategory === cat) {
+                        selectedCategory = null;
+                    } else {
+                        selectedCategory = cat;
+                    }
+                    applyFilters();
+                });
+            });
+
+            const resetCatBtn = document.getElementById('catalog-reset-cat-btn');
+            if (resetCatBtn) {
+                resetCatBtn.addEventListener('click', function() {
+                    selectedCategory = null;
+                    applyFilters();
+                });
+            }
+
+            const activeFilterRemove = document.getElementById('catalog-active-filter-remove');
+            if (activeFilterRemove) {
+                activeFilterRemove.addEventListener('click', function() {
+                    selectedCategory = null;
+                    applyFilters();
+                });
+            }
+
+            // Eventos del Buscador
+            const searchInput = document.getElementById('catalog-search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', applyFilters);
+            }
+
+            const searchClearBtn = document.getElementById('catalog-search-clear');
+            if (searchClearBtn) {
+                searchClearBtn.addEventListener('click', function() {
+                    if (searchInput) searchInput.value = '';
+                    applyFilters();
+                });
+            }
+
+            const clearAllBtn = document.getElementById('catalog-clear-all-filters-btn');
+            if (clearAllBtn) {
+                clearAllBtn.addEventListener('click', function() {
+                    selectedCategory = null;
+                    if (searchInput) searchInput.value = '';
+                    applyFilters();
+                });
+            }
+
+            // 2. Control de Cantidad (+ / -)
+            document.addEventListener('click', function(e) {
+                const minusBtn = e.target.closest('.catalog-qty-minus');
+                if (minusBtn) {
+                    const container = minusBtn.closest('.inline-flex');
+                    const input = container ? container.querySelector('.catalog-qty-input') : null;
+                    if (input) {
+                        const cur = parseInt(input.value, 10) || 1;
+                        input.value = Math.max(1, cur - 1);
+                    }
+                    return;
+                }
+
+                const plusBtn = e.target.closest('.catalog-qty-plus');
+                if (plusBtn) {
+                    const container = plusBtn.closest('.inline-flex');
+                    const input = container ? container.querySelector('.catalog-qty-input') : null;
+                    if (input) {
+                        const cur = parseInt(input.value, 10) || 1;
+                        input.value = cur + 1;
+                    }
+                    return;
+                }
+            });
+
+            document.addEventListener('change', function(e) {
+                if (e.target.classList.contains('catalog-qty-input')) {
+                    const cur = parseInt(e.target.value, 10);
+                    if (isNaN(cur) || cur < 1) {
+                        e.target.value = 1;
+                    }
+                }
+            });
+
+            // 3. Añadir al Carrito Consolidado
+            document.addEventListener('click', function(e) {
+                const addBtn = e.target.closest('.catalog-add-btn');
+                if (!addBtn) return;
+
+                const parent = addBtn.closest('.catalog-table-row, .catalog-product-card');
+                const qtyInput = parent ? parent.querySelector('.catalog-qty-input') : null;
+                const qty = qtyInput ? (parseInt(qtyInput.value, 10) || 1) : 1;
+
+                const itemIdx = addBtn.getAttribute('data-item-index');
+                const code = addBtn.getAttribute('data-code') || '';
+                const name = addBtn.getAttribute('data-name') || '';
+                const unit = addBtn.getAttribute('data-unit') || '';
+                const rawPrice = addBtn.getAttribute('data-primary-price') || '';
+                const hasCents = rawPrice.includes(',') || (rawPrice.includes('.') && rawPrice.split('.').length === 2 && rawPrice.split('.')[1].length !== 3);
+                const unitPrice = parsePriceNum(rawPrice);
+
+                const itemKey = `item_${itemIdx}`;
+                if (cart[itemKey]) {
+                    cart[itemKey].qty += qty;
+                } else {
+                    cart[itemKey] = {
+                        key: itemKey,
+                        code: code,
+                        name: name,
+                        unit: unit,
+                        rawPrice: rawPrice,
+                        hasCents: hasCents,
+                        unitPrice: unitPrice,
+                        qty: qty
+                    };
+                }
+
+                // Feedback visual en el botón
+                const origHtml = addBtn.innerHTML;
+                addBtn.innerHTML = '<i class="fas fa-check text-[10px]"></i> <span>✓ Añadido</span>';
+                addBtn.classList.remove('bg-primary', 'hover:bg-primary-dark');
+                addBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+
+                setTimeout(() => {
+                    addBtn.innerHTML = origHtml;
+                    addBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+                    addBtn.classList.add('bg-primary', 'hover:bg-primary-dark');
+                }, 900);
+
+                updateCartUI();
+            });
+
+            // 4. Actualización del Carrito Flotante y Enlace WhatsApp
+            function buildWhatsAppOrderMessage(cartMap) {
+                let msg = `Hola ${businessTitle}! Quisiera consultar disponibilidad y presupuesto para el siguiente pedido:\n\n`;
+                let total = 0;
+                let anyCents = false;
+
+                Object.values(cartMap).forEach(it => {
+                    const codStr = it.code ? `[Cód: ${it.code}] ` : '';
+                    let unitStr = '';
+                    if (it.unit) {
+                        const u = it.unit.trim();
+                        unitStr = u.toLowerCase().startsWith('x') ? ` ${u}` : ` x ${u}`;
+                    }
+                    const subtotal = it.qty * it.unitPrice;
+                    total += subtotal;
+                    if (it.hasCents || (subtotal % 1 !== 0)) {
+                        anyCents = true;
+                    }
+
+                    const unitPriceStr = it.rawPrice || formatARS(it.unitPrice, it.hasCents);
+                    const subtotalStr = formatARS(subtotal, it.hasCents);
+
+                    msg += `• ${it.qty}x ${codStr}${it.name}${unitStr} (${unitPriceStr} c/u) = ${subtotalStr}\n`;
+                });
+
+                const totalStr = formatARS(total, anyCents);
+                msg += `\n💰 Total estimado: ${totalStr}\n¿Tienen stock para retirar o enviar?`;
+                return msg;
+            }
+
+            function updateCartUI() {
+                const cartBar = document.getElementById('catalog-cart-bar');
+                const cartCount = document.getElementById('catalog-cart-count');
+                const cartCountPlural = document.getElementById('catalog-cart-count-plural');
+                const cartTotal = document.getElementById('catalog-cart-total');
+                const waBtn = document.getElementById('catalog-cart-wa-btn');
+
+                let totalQty = 0;
+                let totalPrice = 0;
+                let anyCents = false;
+
+                Object.values(cart).forEach(it => {
+                    totalQty += it.qty;
+                    const sub = it.qty * it.unitPrice;
+                    totalPrice += sub;
+                    if (it.hasCents || (sub % 1 !== 0)) {
+                        anyCents = true;
+                    }
+                });
+
+                if (totalQty === 0) {
+                    if (cartBar) cartBar.classList.add('hidden');
+                    return;
+                }
+
+                if (cartBar) cartBar.classList.remove('hidden');
+                if (cartCount) cartCount.textContent = totalQty;
+                if (cartCountPlural) cartCountPlural.textContent = totalQty === 1 ? '' : 's';
+                if (cartTotal) cartTotal.textContent = formatARS(totalPrice, anyCents);
+
+                if (waBtn) {
+                    const msg = buildWhatsAppOrderMessage(cart);
+                    waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+                }
+            }
+
+            // Vaciar carrito
+            const clearCartBtn = document.getElementById('catalog-cart-clear');
+            if (clearCartBtn) {
+                clearCartBtn.addEventListener('click', function() {
+                    for (const k in cart) {
+                        delete cart[k];
+                    }
+                    updateCartUI();
+                });
+            }
+
+            // 5. Modal Lightbox para Catálogos / Cartas de Colores
+            const modal = document.getElementById('catalog-lightbox-modal');
+            const modalBox = document.getElementById('catalog-lightbox-box');
+            const modalTitle = document.getElementById('catalog-lightbox-title');
+            const modalImg = document.getElementById('catalog-lightbox-img');
+            const modalFrame = document.getElementById('catalog-lightbox-frame');
+            const modalFallback = document.getElementById('catalog-lightbox-fallback');
+            const modalFallbackLink = document.getElementById('catalog-lightbox-fallback-link');
+            const modalExternal = document.getElementById('catalog-lightbox-external');
+            const modalClose = document.getElementById('catalog-lightbox-close');
+
+            function openLightbox(url, title) {
+                if (!modal) return;
+                if (modalTitle) modalTitle.textContent = title || 'Carta de Colores';
+                if (modalExternal) modalExternal.href = url;
+                if (modalFallbackLink) modalFallbackLink.href = url;
+
+                const lower = url.toLowerCase();
+                const isPdf = lower.endsWith('.pdf') || lower.includes('.pdf?');
+                const isImg = lower.match(/\.(jpeg|jpg|gif|png|webp|svg)($|\?)/i) || 
+                              url.includes('images.unsplash.com') || 
+                              url.includes('cloudinary');
+
+                if (isPdf) {
+                    if (modalFrame) {
+                        modalFrame.src = url;
+                        modalFrame.classList.remove('hidden');
+                    }
+                    if (modalImg) modalImg.classList.add('hidden');
+                    if (modalFallback) modalFallback.classList.add('hidden');
+                } else if (isImg || !isPdf) {
+                    if (modalImg) {
+                        modalImg.src = url;
+                        modalImg.classList.remove('hidden');
+                    }
+                    if (modalFrame) modalFrame.classList.add('hidden');
+                    if (modalFallback) modalFallback.classList.add('hidden');
+                }
+
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.remove('opacity-0');
+                    if (modalBox) modalBox.classList.remove('scale-95');
+                }, 10);
+            }
+
+            function closeLightbox() {
+                if (!modal) return;
+                modal.classList.add('opacity-0');
+                if (modalBox) modalBox.classList.add('scale-95');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    if (modalImg) modalImg.src = '';
+                    if (modalFrame) modalFrame.src = '';
+                }, 200);
+            }
+
+            document.addEventListener('click', function(e) {
+                const btn = e.target.closest('.catalog-open-carta-btn');
+                if (btn) {
+                    const url = btn.getAttribute('data-url');
+                    const title = btn.getAttribute('data-title');
+                    if (url) openLightbox(url, title);
+                }
+            });
+
+            if (modalClose) {
+                modalClose.addEventListener('click', closeLightbox);
+            }
+
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        closeLightbox();
+                    }
+                });
+            }
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+                    closeLightbox();
+                }
+            });
+        })();
+        {% else %}
         // --- GESTIÓN DE LISTA DE PRECIOS & SERVICIOS ---
         (function() {
             const businessTitle = {{ (web_content.titulo_web or 'Negocio') | tojson }};
@@ -1399,6 +2258,7 @@
                 });
             });
         })();
+        {% endif %}
         {% endif %}
 
         // Scroll automático a #precios si la URL lo requiere

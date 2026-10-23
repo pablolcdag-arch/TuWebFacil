@@ -519,3 +519,12 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** En servidores de producción como Donweb, Gunicorn opera con múltiples procesos independientes (`-w 2`). Cuando la petición de inicio de campaña es atendida por un worker y la petición de detención por otro, la variable en memoria no era compartida, impidiendo el freno inmediato.
 - **Impacto:** Botón de detención 100% reactivo y efectivo en milisegundos en producción, y flujo de trabajo multiagente más ágil, limpio y consistente.
 
+## [23/10/2026] — Bloques Ejecutivos Ultraconcisos para Implementadores y Verificadores (Back & Front)
+- **Decisión:**
+  1. En `.agents/AGENTS.md`, se estandarizó que los bloques copiables ````markdown # REPORTE PARA EL COORDINADOR ```` deben tener una longitud máxima estricta de 8 a 12 líneas ejecutivas.
+  2. Queda terminantemente prohibido volcar código fuente, archivos completos o transcripciones crudas de terminal dentro del bloque, ya que el Coordinador tiene acceso directo al repositorio para inspeccionar el diff y correr los comandos.
+  3. Los prompts redactados por el Coordinador deben indicar explícitamente si son para el rol **Backend** o **Frontend** tanto en la fase de implementación como en la de verificación.
+- **Razón:** Agilizar la interacción del usuario: copiar con 1 solo clic un bloque corto y claro, sin lidiar con paredes interminables de código duplicado en la conversación.
+- **Impacto:** Menor fricción operativa, interacción ultra-rápida entre agentes y ciclo de feedback inmediato.
+
+

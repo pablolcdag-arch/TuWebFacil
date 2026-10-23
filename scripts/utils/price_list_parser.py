@@ -24,50 +24,79 @@ def normalize_text(text):
     text_str = str(text).strip()
     return unicodedata.normalize('NFKD', text_str).encode('ASCII', 'ignore').decode('utf-8').lower()
 
+def is_code_keyword(col_name):
+    """Detecta si un encabezado de columna indica un código o SKU explícito."""
+    norm = normalize_text(col_name)
+    tokens = re.findall(r'[a-z0-9]+', norm)
+    for t in tokens:
+        if t in {"codigo", "cod", "sku"} or t.startswith("cod") or t.startswith("sku"):
+            return True
+    return False
+
+def is_article_keyword(col_name):
+    """Detecta palabras clave de artículo/art sin colisionar con tarjeta, carta o departamento."""
+    norm = normalize_text(col_name)
+    tokens = re.findall(r'[a-z0-9]+', norm)
+    for t in tokens:
+        if t in {"articulo", "art"} or (t.startswith("art") and not t.startswith("arte")):
+            return True
+    return False
+
 def format_price(val):
     """
     Formatea importes como string monetario normalizado argentino:
-    ej: 48089.77 -> "$48.089,77" o 15000 -> "$15.000"
+    ej: 48089.77 -> "$48.089,77", 15000 -> "$15.000", "8900,00" -> "$8.900", "7.539,81" -> "$7.539,81"
     """
     if val is None or pd.isna(val):
         return "-"
     
     val_str = str(val).strip()
-    if not val_str or val_str in ["-", "nan", "none", "null"]:
+    if not val_str or val_str.lower() in ["-", "nan", "none", "null"]:
         return "-"
 
     # Si es numérico directamente (int o float)
     if isinstance(val, (int, float)):
-        if isinstance(val, float) and not val.is_integer():
-            main_part = int(val)
-            dec_part = int(round((val - main_part) * 100))
-            formatted_main = f"{main_part:,}".replace(",", ".")
+        cents = int(round(float(val) * 100))
+        main_part = cents // 100
+        dec_part = cents % 100
+        formatted_main = f"{main_part:,}".replace(",", ".")
+        if dec_part > 0:
             return f"${formatted_main},{dec_part:02d}"
         else:
-            formatted_main = f"{int(val):,}".replace(",", ".")
             return f"${formatted_main}"
 
     # Limpiar símbolo de moneda y espacios
     cleaned = val_str.replace("$", "").replace("ARS", "").replace("USD", "").strip()
 
-    # Si ya tiene formato argentino exacto: ej "$48.089,77" o "48.089,77"
+    # Si ya tiene formato argentino exacto con centavos: ej "48.089,77"
     if re.match(r'^\d{1,3}(\.\d{3})*,\d{2}$', cleaned):
+        if cleaned.endswith(",00"):
+            return f"${cleaned[:-3]}"
         return f"${cleaned}"
+
     # Si ya tiene formato argentino entero: ej "15.000"
     if re.match(r'^\d{1,3}(\.\d{3})*$', cleaned):
         return f"${cleaned}"
 
-    # Intentar parsear numéricamente
+    # Intentar parsear numéricamente con tolerancia a comas y puntos
     try:
         if "," in cleaned and "." in cleaned:
-            # Notación argentina ej: 48.089,77
+            # Notación argentina ej: 48.089,77 o 1.234.567,89
             num = float(cleaned.replace(".", "").replace(",", "."))
         elif "," in cleaned and "." not in cleaned:
-            # Notación con coma decimal ej: 48089,77
+            # Notación con coma decimal ej: 48089,77 o 8900,00
             num = float(cleaned.replace(",", "."))
         else:
             num = float(cleaned)
-        return format_price(num)
+        
+        cents = int(round(num * 100))
+        main_part = cents // 100
+        dec_part = cents % 100
+        formatted_main = f"{main_part:,}".replace(",", ".")
+        if dec_part > 0:
+            return f"${formatted_main},{dec_part:02d}"
+        else:
+            return f"${formatted_main}"
     except Exception:
         # Fallback si no es parseable directamente
         return f"${cleaned}" if not val_str.startswith("$") else val_str
@@ -75,46 +104,128 @@ def format_price(val):
 def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
     """
     Procesa un DataFrame de Pandas (de CSV o Excel) identificando
-    columnas de servicios y modalidades de pago.
+    columnas de servicios/productos, modalidades de pago y metadatos de catálogo
+    (código, categoría, unidad, carta de colores/ficha técnica).
     """
     # 1. Limpiar filas y columnas completamente vacías
     df = df.dropna(how='all').dropna(axis=1, how='all')
     if df.empty or len(df.columns) < 2:
         raise ValueError("El archivo no contiene suficientes columnas de servicios y precios.")
 
-    # 2. Identificar columna de nombre de servicio
-    name_keywords = ["servicio", "zona", "tratamiento", "descripcion", "producto", "detalle", "item", "concepto", "nombre"]
-    service_col = None
+    # 2. Identificar columnas de metadatos de catálogo
+    category_keywords = ["categoria", "rubro", "familia", "linea", "grupo"]
+    carta_keywords = ["carta", "colores", "ficha", "catalogo", "link"]
+    unit_keywords = ["unidad", "medida", "presentacion", "envase", "unid"]
+    payment_keywords = ["efectivo", "transferencia", "tarjeta", "precio", "contado", "valor", "debito", "cuotas", "lista", "monto", "arancel", "costo"]
 
+    category_col = None
     for col in df.columns:
-        norm_col = normalize_text(col)
-        if any(k in norm_col for k in name_keywords):
-            service_col = col
+        norm = normalize_text(col)
+        if any(k in norm for k in category_keywords):
+            category_col = col
             break
 
-    if not service_col:
-        # Seleccionar la primera columna
-        service_col = df.columns[0]
-
-    # 3. Identificar columnas de precios / modalidades de pago
-    payment_keywords = ["efectivo", "transferencia", "tarjeta", "precio", "contado", "valor", "debito", "cuotas", "lista", "monto", "arancel", "costo"]
-    price_cols = []
-    
+    carta_col = None
     for col in df.columns:
-        if col == service_col:
+        if col == category_col:
             continue
-        norm_col = normalize_text(col)
-        if any(k in norm_col for k in payment_keywords):
+        norm = normalize_text(col)
+        if any(k in norm for k in carta_keywords):
+            carta_col = col
+            break
+
+    unit_col = None
+    for col in df.columns:
+        if col in [category_col, carta_col]:
+            continue
+        norm = normalize_text(col)
+        tokens = re.findall(r'[a-z0-9]+', norm)
+        if any(k in norm for k in unit_keywords) or "um" in tokens:
+            unit_col = col
+            break
+
+    # 3. Identificar columnas de precios
+    price_cols = []
+    for col in df.columns:
+        if col in [category_col, carta_col, unit_col]:
+            continue
+        norm = normalize_text(col)
+        if any(k in norm for k in payment_keywords):
             price_cols.append(col)
 
-    # Si ninguna columna matcheó palabras clave, tomar las columnas restantes
+    # 4. Determinar service_col y code_col entre las columnas restantes
+    remaining_cols = [c for c in df.columns if c not in [category_col, carta_col, unit_col] and c not in price_cols]
+
     if not price_cols:
-        price_cols = [c for c in df.columns if c != service_col]
+        name_keywords = ["servicio", "zona", "tratamiento", "descripcion", "producto", "detalle", "item", "concepto", "nombre", "articulo"]
+        service_col = None
+        for c in remaining_cols:
+            norm = normalize_text(c)
+            if any(k in norm for k in name_keywords):
+                service_col = c
+                break
+        if not service_col and remaining_cols:
+            service_col = remaining_cols[0]
+        if service_col:
+            price_cols = [c for c in remaining_cols if c != service_col]
+            code_col = None
+        else:
+            raise ValueError("No se encontraron columnas de precios ni de servicios en la tabla.")
+    else:
+        if len(remaining_cols) == 0:
+            service_col = price_cols.pop(0)
+            code_col = None
+        elif len(remaining_cols) == 1:
+            service_col = remaining_cols[0]
+            code_col = None
+        else:
+            exp_code_col = None
+            for c in remaining_cols:
+                if is_code_keyword(c):
+                    exp_code_col = c
+                    break
+
+            if exp_code_col:
+                code_col = exp_code_col
+                other_cols = [c for c in remaining_cols if c != exp_code_col]
+                name_keywords = ["descripcion", "servicio", "producto", "articulo", "detalle", "item", "concepto", "nombre", "zona", "tratamiento"]
+                service_col = None
+                for c in other_cols:
+                    norm = normalize_text(c)
+                    if any(k in norm for k in name_keywords):
+                        service_col = c
+                        break
+                if not service_col:
+                    service_col = other_cols[0]
+            else:
+                art_col = None
+                for c in remaining_cols:
+                    if is_article_keyword(c):
+                        art_col = c
+                        break
+                if art_col:
+                    other_cols = [c for c in remaining_cols if c != art_col]
+                    desc_keywords = ["descripcion", "detalle", "nombre", "concepto", "servicio"]
+                    desc_col = None
+                    for c in other_cols:
+                        norm = normalize_text(c)
+                        if any(k in norm for k in desc_keywords):
+                            desc_col = c
+                            break
+                    if desc_col:
+                        code_col = art_col
+                        service_col = desc_col
+                    else:
+                        service_col = art_col
+                        code_col = None
+                else:
+                    service_col = remaining_cols[0]
+                    code_col = None
 
     if not price_cols:
         raise ValueError("No se encontraron columnas de precios en la tabla.")
 
-    # 4. Mapear nombres de columnas de pago y sus claves normalizadas
+    # 5. Mapear nombres de columnas de pago y sus claves normalizadas
     columnas_pago = []
     col_to_key = {}
     for col in price_cols:
@@ -130,16 +241,28 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
             key = "tarjeta"
         elif "debito" in norm_key:
             key = "debito"
-        elif "precio" in norm_key or "lista" in norm_key or "valor" in norm_key:
+        elif "lista" in norm_key:
+            key = "lista"
+        elif "precio" in norm_key or "valor" in norm_key:
             key = "precio"
         else:
             key = re.sub(r'[^a-z0-9]+', '_', norm_key).strip('_')
             if not key:
                 key = f"precio_{len(col_to_key) + 1}"
+
+        base_key = key
+        counter = 2
+        while key in col_to_key.values():
+            key = f"{base_key}_{counter}"
+            counter += 1
         col_to_key[col] = key
 
-    # 5. Iterar filas y armar items
+    # 6. Clasificación de Modo de Vista y extracción de items
+    is_catalog = bool(code_col or category_col or unit_col or carta_col)
+    modo_vista = "catalogo" if is_catalog else "servicios"
     items = []
+    categorias_map = {}
+
     for _, row in df.iterrows():
         srv_val = row[service_col]
         if pd.isna(srv_val):
@@ -148,7 +271,7 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
         norm_srv = normalize_text(srv_name)
         
         # Omitir filas de encabezado repetidas o vacías
-        if not srv_name or norm_srv in ["nan", "none", "null", "servicio", "zona", "tratamiento", "descripcion", "producto"]:
+        if not srv_name or norm_srv in ["nan", "none", "null", "servicio", "zona", "tratamiento", "descripcion", "producto", "articulo", "item", "concepto", "nombre"]:
             continue
 
         row_precios = {}
@@ -161,8 +284,58 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
             key = col_to_key[col]
             row_precios[key] = fmt_p
 
-        if has_valid_price:
+        if not has_valid_price:
+            continue
+
+        if is_catalog:
+            cat_name = ""
+            if category_col and pd.notna(row[category_col]):
+                val_c = str(row[category_col]).strip()
+                if normalize_text(val_c) not in ["nan", "none", "null"]:
+                    cat_name = val_c
+
+            cod_val = ""
+            if code_col and pd.notna(row[code_col]):
+                val_cod = str(row[code_col]).strip()
+                if normalize_text(val_cod) not in ["nan", "none", "null"]:
+                    cod_val = val_cod
+
+            unit_val = ""
+            if unit_col and pd.notna(row[unit_col]):
+                val_u = str(row[unit_col]).strip()
+                if normalize_text(val_u) not in ["nan", "none", "null"]:
+                    unit_val = val_u
+
+            carta_val = ""
+            if carta_col and pd.notna(row[carta_col]):
+                val_carta = str(row[carta_col]).strip()
+                if normalize_text(val_carta) not in ["nan", "none", "null", "-"]:
+                    carta_val = val_carta
+
+            if cat_name:
+                if cat_name not in categorias_map:
+                    categorias_map[cat_name] = {
+                        "nombre": cat_name,
+                        "foto_url": "",
+                        "carta_url": ""
+                    }
+                if carta_val and not categorias_map[cat_name]["carta_url"]:
+                    categorias_map[cat_name]["carta_url"] = carta_val
+
             items.append({
+                "tipo": "producto",
+                "categoria": cat_name,
+                "codigo": cod_val,
+                "servicio": srv_name,
+                "unidad": unit_val,
+                "carta_url": carta_val,
+                "foto_url": "",
+                "color_dot": "",
+                "precios": row_precios
+            })
+        else:
+            items.append({
+                "tipo": "servicio",
                 "servicio": srv_name,
                 "precios": row_precios
             })
@@ -170,9 +343,13 @@ def parse_tabular_data(df, default_title="Lista de Precios Oficial"):
     if not items:
         raise ValueError("No se encontraron filas con servicios y precios válidos en el archivo tabular.")
 
+    categorias = list(categorias_map.values()) if is_catalog else []
+
     return {
         "titulo": default_title,
+        "modo_vista": modo_vista,
         "columnas_pago": columnas_pago,
+        "categorias": categorias,
         "items": items
     }
 
@@ -234,6 +411,16 @@ Contenido a analizar:
         if "titulo" not in data or not data["titulo"]:
             data["titulo"] = default_title
 
+        if "modo_vista" not in data or not data["modo_vista"]:
+            data["modo_vista"] = "servicios"
+
+        if "categorias" not in data:
+            data["categorias"] = []
+
+        for it in data.get("items", []):
+            if "tipo" not in it:
+                it["tipo"] = "servicio"
+
         return data
     except Exception as e:
         logging.error(f"Error extrayendo con Gemini: {e}")
@@ -269,6 +456,7 @@ def parse_text_fallback(text, default_title="Lista de Precios Oficial"):
             prc = format_price(m_simple.group(2))
             detected_cols.add("Precio")
             items.append({
+                "tipo": "servicio",
                 "servicio": srv,
                 "precios": {"precio": prc}
             })
@@ -292,6 +480,7 @@ def parse_text_fallback(text, default_title="Lista de Precios Oficial"):
                     elif "tarjeta" in key: key = "tarjeta"
                     precios[key] = format_price(p_val)
                 items.append({
+                    "tipo": "servicio",
                     "servicio": srv,
                     "precios": precios
                 })
@@ -300,7 +489,9 @@ def parse_text_fallback(text, default_title="Lista de Precios Oficial"):
         cols = sorted(list(detected_cols)) if detected_cols else ["Precio"]
         return {
             "titulo": default_title,
+            "modo_vista": "servicios",
             "columnas_pago": cols,
+            "categorias": [],
             "items": items
         }
 
