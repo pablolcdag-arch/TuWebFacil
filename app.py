@@ -642,6 +642,7 @@ def check_custom_domain():
                     parsed_content["lista_precios"] = draft_prices
                     is_preview = True
 
+            is_catalog_route = request.path in ['/catalogo', '/tienda']
             has_edits = cont.data[0]["version"] > 1
             return render_template('client_template.html', 
                                  web_content=parsed_content, 
@@ -649,7 +650,8 @@ def check_custom_domain():
                                  web_status=web['status'],
                                  bot_phone=BOT_PHONE,
                                  has_edits=has_edits,
-                                 is_preview=is_preview)
+                                 is_preview=is_preview,
+                                 is_catalog_route=is_catalog_route)
     return None
 
 @app.route('/uploads/<path:filename>')
@@ -774,43 +776,54 @@ def process_form():
         logging.error(f"Error detectado procesando formulario: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/static/<path:filename>', subdomain="<client_slug>")
+def client_static(client_slug, filename):
+    return send_from_directory(app.static_folder, filename)
+
 @app.route('/', subdomain="<client_slug>")
 @app.route('/precios', subdomain="<client_slug>")
+@app.route('/catalogo', subdomain="<client_slug>")
+@app.route('/tienda', subdomain="<client_slug>")
 def client_website(client_slug):
     try:
+        is_catalog_route = request.path in ['/catalogo', '/tienda']
         # 1. Prioridad: Consultar en Supabase si está disponible
         if supabase:
-            res = supabase.table("websites").select("*").eq("subdomain", client_slug).execute()
-            if res.data:
-                web = res.data[0]
-                
-                # Chequear si está en mantenimiento por falta de pago
-                if web.get('status') == 'maintenance':
-                    return render_template('paused.html', bot_phone=BOT_PHONE, slug=client_slug), 402
+            try:
+                res = supabase.table("websites").select("*").eq("subdomain", client_slug).execute()
+                if res.data:
+                    web = res.data[0]
+                    
+                    # Chequear si está en mantenimiento por falta de pago
+                    if web.get('status') == 'maintenance':
+                        return render_template('paused.html', bot_phone=BOT_PHONE, slug=client_slug), 402
 
-                cont = supabase.table("website_content").select("*").eq("website_id", web["id"]).eq("is_current", True).execute()
-                cli = supabase.table("clients").select("*").eq("id", web["client_id"]).execute()
-                
-                content_data = cont.data[0]["content"]
-                parsed_content = json.loads(content_data) if isinstance(content_data, str) else content_data
-                
-                # Soporte de vista previa temporal para lista de precios (?preview=TOKEN)
-                preview_token = request.args.get("preview")
-                is_preview = False
-                if preview_token:
-                    draft_prices = get_draft_prices_by_token(preview_token)
-                    if draft_prices:
-                        parsed_content["lista_precios"] = draft_prices
-                        is_preview = True
+                    cont = supabase.table("website_content").select("*").eq("website_id", web["id"]).eq("is_current", True).execute()
+                    cli = supabase.table("clients").select("*").eq("id", web["client_id"]).execute()
+                    
+                    content_data = cont.data[0]["content"]
+                    parsed_content = json.loads(content_data) if isinstance(content_data, str) else content_data
+                    
+                    # Soporte de vista previa temporal para lista de precios (?preview=TOKEN)
+                    preview_token = request.args.get("preview")
+                    is_preview = False
+                    if preview_token:
+                        draft_prices = get_draft_prices_by_token(preview_token)
+                        if draft_prices:
+                            parsed_content["lista_precios"] = draft_prices
+                            is_preview = True
 
-                has_edits = cont.data[0]["version"] > 1
-                return render_template('client_template.html', 
-                                     web_content=parsed_content, 
-                                     client=cli.data[0], 
-                                     web_status=web['status'],
-                                     bot_phone=BOT_PHONE,
-                                     has_edits=has_edits,
-                                     is_preview=is_preview)
+                    has_edits = cont.data[0]["version"] > 1
+                    return render_template('client_template.html', 
+                                         web_content=parsed_content, 
+                                         client=cli.data[0], 
+                                         web_status=web['status'],
+                                         bot_phone=BOT_PHONE,
+                                         has_edits=has_edits,
+                                         is_preview=is_preview,
+                                         is_catalog_route=is_catalog_route)
+            except Exception as se:
+                logging.warning(f"Error consultando Supabase para '{client_slug}': {se}")
 
         # 2. Fallback: Si no está en BD (o no hay conexión), buscar en la caché local en memoria
         if client_slug in DEMO_SITES:
@@ -829,7 +842,8 @@ def client_website(client_slug):
                                  web_status=site["status"],
                                  bot_phone=BOT_PHONE,
                                  has_edits=False,
-                                 is_preview=is_preview)
+                                 is_preview=is_preview,
+                                 is_catalog_route=is_catalog_route)
         
         logging.warning(f"No se encontró la web '{client_slug}'")
         return redirect(url_for('index'))

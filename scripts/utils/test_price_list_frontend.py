@@ -551,9 +551,9 @@ def run_tests():
     print("  ✅ Promociones por producto individual (Fase 2), atributos data, JS dinámico y retrocompatibilidad verificados al 100%.")
 
     # ------------------------------------------------------------------
-    # TEST 10: Modo Catálogo de Productos Físicos (B2B / Mayorista)
+    # TEST 10: Modo Catálogo de Productos Físicos (Home CTA vs /catalogo)
     # ------------------------------------------------------------------
-    print("\n[TEST 10] Verificando Modo Catálogo de Productos Físicos (B2B / Estilo Disgraf)...")
+    print("\n[TEST 10] Verificando Modo Catálogo (Home CTA vs /catalogo dedicado)...")
 
     ctx_cat = build_base_context()
     ctx_cat["web_content"]["titulo_web"] = "Disgraf Insumos Gráficos"
@@ -601,16 +601,30 @@ def run_tests():
         ]
     }
 
+    # 10.A: Vista Home (is_catalog_route = False) -> Tarjeta de presentación y CTA
+    ctx_cat["is_catalog_route"] = False
+    html_home_cat = template.render(**ctx_cat)
+
+    assert 'Catálogo Oficial de Productos & Precios' in html_home_cat, "Debe tener título de catálogo en la Home"
+    assert 'href="/catalogo"' in html_home_cat, "Debe incluir enlace CTA a /catalogo"
+    assert 'Explorar Catálogo y Precios' in html_home_cat, "Debe incluir texto del botón CTA"
+    assert 'catalog-desktop-table' not in html_home_cat, "En la Home NO se debe renderizar la tabla completa de catálogo"
+    assert 'catalog-category-card' not in html_home_cat, "En la Home NO se debe renderizar la cuadrícula de 88 cajas"
+
+    # 10.B: Vista Dedicada /catalogo (is_catalog_route = True)
+    ctx_cat["is_catalog_route"] = True
     html_cat = template.render(**ctx_cat)
 
-    # 1. Grid de categorías superior
-    assert 'id="catalog-categories-container"' in html_cat, "Debe existir contenedor de categorías"
-    assert 'catalog-category-card' in html_cat, "Deben existir tarjetas de categoría"
-    assert 'data-category="Vinilos de Corte"' in html_cat, "Debe existir categoría 'Vinilos de Corte'"
-    assert 'Insumos &amp; Accesorios' in html_cat or 'Insumos & Accesorios' in html_cat, "Debe existir categoría 'Insumos & Accesorios'"
-    assert 'catalog-reset-cat-btn' in html_cat, "Debe existir botón para resetear filtro de categorías"
+    # 1. Barra de navegación y botón volver
+    assert 'href="/"' in html_cat and 'Volver a la página principal' in html_cat, "Debe incluir enlace para volver a la Home"
 
-    # 2. Badges de código de producto y nombre
+    # 2. Selector compacto de categorías (adiós a las 88 cajas)
+    assert 'id="catalog-category-select"' in html_cat, "Debe existir selector compacto de categorías"
+    assert '<option value="">Todas las categorías' in html_cat, "Debe incluir opción por defecto con conteo total"
+    assert 'Vinilos de Corte' in html_cat, "Debe listar la categoría 'Vinilos de Corte'"
+    assert 'catalog-category-card' not in html_cat, "No debe existir la cuadrícula de 88 cajas en la vista de catálogo"
+
+    # 3. Badges de código de producto, nombre y unidad
     assert '#1374' in html_cat, "Debe exhibir el código de producto #1374"
     assert '#2628' in html_cat, "Debe exhibir el código de producto #2628"
     assert 'font-mono' in html_cat, "El código debe tener tipografía monoespaciada"
@@ -619,7 +633,7 @@ def run_tests():
     assert 'x metro' in html_cat, "Debe exhibir la unidad 'x metro'"
     assert 'x rollo' in html_cat, "Debe exhibir la unidad 'x rollo'"
 
-    # 3. Botón de Ver Catálogo / Carta de Colores y Lightbox Modal
+    # 4. Botón de Ver Catálogo / Carta de Colores y Lightbox Modal
     assert 'catalog-open-carta-btn' in html_cat, "Debe existir botón para abrir carta de colores"
     assert 'Ver Catálogo' in html_cat, "El botón debe tener la etiqueta 'Ver Catálogo'"
     assert 'id="catalog-lightbox-modal"' in html_cat, "Debe existir el modal lightbox en el DOM"
@@ -627,33 +641,38 @@ def run_tests():
     assert 'catalog-lightbox-frame' in html_cat, "El modal debe incluir visor de documentos / iframe"
     assert 'catalog-lightbox-close' in html_cat, "El modal debe incluir botón de cierre"
 
-    # 4. Buscador reactivo en vivo
+    # 5. Buscador reactivo en vivo y Controles de Paginación (25 items/pág)
     assert 'id="catalog-search-input"' in html_cat, "Debe existir el buscador del catálogo"
     assert 'id="catalog-no-results"' in html_cat, "Debe existir el contenedor para búsquedas sin resultados"
+    assert 'id="catalog-pagination-container"' in html_cat, "Debe existir el contenedor de paginación"
+    assert 'id="catalog-prev-page"' in html_cat, "Debe existir el botón de página anterior"
+    assert 'id="catalog-next-page"' in html_cat, "Debe existir el botón de página siguiente"
+    assert 'id="catalog-page-info"' in html_cat, "Debe existir el indicador de página y productos"
 
-    # 5. Selector de cantidad interactivo y botón Añadir
+    # 6. Selector de cantidad interactivo y botón Añadir
     assert 'catalog-qty-minus' in html_cat, "Debe existir selector de cantidad decremento (-)"
     assert 'catalog-qty-plus' in html_cat, "Debe existir selector de cantidad incremento (+)"
     assert 'catalog-qty-input' in html_cat, "Debe existir input de cantidad"
     assert 'catalog-add-btn' in html_cat, "Debe existir botón de Añadir"
     assert 'Añadir' in html_cat, "El botón debe decir 'Añadir'"
 
-    # 6. Carrito Flotante Consolidado (WhatsApp)
+    # 7. Carrito Flotante Consolidado (WhatsApp)
     assert 'id="catalog-cart-bar"' in html_cat, "Debe existir la barra flotante de carrito del catálogo"
     assert 'id="catalog-cart-count"' in html_cat, "Debe existir el contador de artículos"
     assert 'id="catalog-cart-total"' in html_cat, "Debe existir el totalizador de precio"
     assert 'id="catalog-cart-wa-btn"' in html_cat, "Debe existir el botón de WhatsApp del carrito"
 
-    # 7. Aislamiento total: no deben existir componentes de servicios en modo catálogo
+    # 8. Aislamiento total: no deben existir componentes de servicios en modo catálogo
     assert 'price-multi-bar' not in html_cat, "El sticky bar de servicios NO debe renderizarse en modo catálogo"
     assert 'price-item-checkbox' not in html_cat, "Los checkboxes de servicios NO deben renderizarse en modo catálogo"
 
-    # 8. Verificación de lógica JavaScript específica de catálogo
+    # 9. Verificación de lógica JavaScript específica de catálogo
     assert 'buildWhatsAppOrderMessage' in html_cat, "El script debe contener la función constructora de mensajes"
     assert 'applyFilters' in html_cat, "El script debe contener la función applyFilters"
     assert 'openLightbox' in html_cat, "El script debe contener la función openLightbox"
+    assert 'PAGE_SIZE' in html_cat, "El script debe definir la constante PAGE_SIZE"
 
-    print("  ✅ Modo Catálogo B2B (Disgraf), grid de categorías, lightbox, selector de cantidad y carrito flotante verificados al 100%.")
+    print("  ✅ Modo Catálogo B2B (Home CTA vs /catalogo dedicado, selector compacto y paginación) verificado al 100%.")
 
     print("\n" + "=" * 75)
     print("🎉 TODAS LAS PRUEBAS FRONTEND DE LA ETAPA 1, 2 Y 3 (CATÁLOGO) PASARON CON ÉXITO (100% PASS)")

@@ -59,14 +59,26 @@
     </div>
     {% endif %}
 
-    <header class="relative min-h-[600px] flex items-center justify-center overflow-hidden bg-slate-950 text-center text-white" {% if web_content.foto_hero %}style="background-image: url('{{ web_content.foto_hero }}'); background-size: cover; background-position: center;"{% endif %}>
-        <div class="absolute inset-0 opacity-50 bg-gradient-premium"></div>
+    {% if is_catalog_route %}
+    <!-- Barra superior de navegación en vista de Catálogo dedicado -->
+    <nav class="bg-white border-b border-slate-200 py-3.5 px-6 sticky top-0 z-[140] backdrop-blur-md bg-white/95 shadow-xs">
+        <div class="container mx-auto flex items-center justify-between">
+            <a href="/" class="text-sm font-semibold text-slate-500 hover:text-primary">← Volver a la página principal</a>
+            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
+                {{ web_content.titulo_web }}
+            </span>
+        </div>
+    </nav>
+    {% else %}
+    <header class="relative min-h-[500px] md:min-h-[600px] flex items-center justify-center overflow-hidden bg-slate-950 text-center text-white" 
+            style="{% if web_content.foto_hero %}background-image: url('{{ web_content.foto_hero }}'); background-size: cover; background-position: center;{% else %}background: linear-gradient(135deg, {{ web_content.paleta_colores.primario or '#1e293b' }} 0%, {{ web_content.paleta_colores.secundario or '#0f172a' }} 100%);{% endif %}">
+        <div class="absolute inset-0 {% if web_content.foto_hero %}opacity-50 bg-gradient-premium{% else %}opacity-40 bg-black/50 backdrop-blur-[2px]{% endif %}"></div>
         <div class="relative z-10 px-6 max-w-5xl">
             {% if web_status == 'demo' %}
-            <span class="inline-block px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold tracking-widest uppercase mb-6 text-white text-white">Demo Preliminar</span>
+            <span class="inline-block px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold tracking-widest uppercase mb-6 text-white">Demo Preliminar</span>
             {% endif %}
-            <h1 class="text-3xl md:text-5xl font-extrabold mb-6 uppercase tracking-tight text-white leading-tight">{{ web_content.titulo_web }}</h1>
-            <p class="text-xl md:text-2xl font-light italic text-white/80">"{{ web_content.subtitulo }}"</p>
+            <h1 class="text-3xl md:text-5xl font-extrabold mb-6 uppercase tracking-tight text-white leading-tight drop-shadow-md">{{ web_content.titulo_web }}</h1>
+            <p class="text-xl md:text-2xl font-light italic text-white/90 drop-shadow">"{{ web_content.subtitulo }}"</p>
         </div>
     </header>
 
@@ -118,6 +130,7 @@
         <p class="text-[11px] text-slate-400 italic text-center mt-3 md:hidden">💡 Nota: Este recuadro es solo para vos. Desaparecerá al confirmar.</p>
         {% endif %}
     </section>
+    {% endif %}
 
     {% if web_content.lista_precios and web_content.lista_precios.get('items') %}
     {% set raw_phone = (web_content.whatsapp_contacto if (web_content and web_content.whatsapp_contacto) else (client.phone if (client and client.phone) else '')) | string %}
@@ -135,8 +148,47 @@
     {% endif %}
 
     {% if is_catalog_mode %}
+    {% if not is_catalog_route %}
     <!-- ================================================================= -->
-    <!-- MODO CATÁLOGO INTERACTIVO (B2B / PRODUCTOS FÍSICOS / MAYORISTA)   -->
+    <!-- MODO CATÁLOGO: TARJETA DE PRESENTACIÓN EN LA HOME                 -->
+    <!-- ================================================================= -->
+    <section id="precios" class="py-20 container mx-auto px-6">
+        <div class="max-w-4xl mx-auto bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-white rounded-3xl p-8 md:p-14 shadow-2xl border border-slate-800 text-center relative overflow-hidden">
+            <div class="absolute -right-16 -top-16 w-64 h-64 bg-primary/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -left-16 -bottom-16 w-64 h-64 bg-secondary/20 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 text-emerald-400 text-xs font-extrabold uppercase tracking-wider mb-6 border border-white/10">
+                <i class="fas fa-boxes"></i> Catálogo Completo Disponible
+            </div>
+            
+            <h2 class="text-3xl md:text-5xl font-black mb-6 uppercase tracking-tight text-white leading-tight">
+                Catálogo Oficial de Productos & Precios
+            </h2>
+            
+            <p class="text-slate-300 text-base md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed font-light">
+                Explorá nuestro catálogo completo con más de {{ web_content.lista_precios['items'] | length }} artículos, seleccioná las cantidades deseadas y enviá tu pedido consolidado por WhatsApp.
+            </p>
+            
+            <div class="flex justify-center">
+                <a href="/catalogo" class="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-primary text-white font-bold text-lg shadow-xl hover:scale-105 transition-all">🛒 Explorar Catálogo y Precios ({{ web_content.lista_precios['items'] | length }} productos) →</a>
+            </div>
+
+            {% if web_content.lista_precios.categorias %}
+            <div class="mt-10 pt-8 border-t border-white/10 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
+                <span class="font-semibold text-slate-300">Rubros destacados:</span>
+                {% for cat in web_content.lista_precios.categorias[:6] %}
+                <span class="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-slate-300">{{ cat.nombre }}</span>
+                {% endfor %}
+                {% if web_content.lista_precios.categorias|length > 6 %}
+                <span class="px-2 py-1 text-slate-500">+{{ web_content.lista_precios.categorias|length - 6 }} rubros más</span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </section>
+    {% else %}
+    <!-- ================================================================= -->
+    <!-- MODO CATÁLOGO DEDICADO (/catalogo o /tienda)                     -->
     <!-- ================================================================= -->
     {% set cat_carta_map = {} %}
     {% if web_content.lista_precios.categorias %}
@@ -147,76 +199,25 @@
         {% endfor %}
     {% endif %}
 
-    <section id="precios" class="py-24 container mx-auto px-6">
+    <section id="precios" class="py-12 md:py-16 container mx-auto px-6">
         <!-- Encabezado de la Sección de Catálogo -->
-        <div class="text-center mb-12">
+        <div class="text-center mb-10">
             <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-3">
                 <i class="fas fa-boxes"></i> Catálogo de Productos
             </div>
-            <h2 class="text-3xl md:text-4xl font-black mb-4 uppercase tracking-tighter italic text-slate-900">
+            <h2 class="text-3xl md:text-4xl font-black mb-3 uppercase tracking-tighter italic text-slate-900">
                 {{ web_content.lista_precios.titulo or 'Catálogo de Productos' }}
             </h2>
             <div class="w-24 h-2 bg-gradient-premium mx-auto rounded-full mb-4"></div>
-            <p class="text-slate-600 text-base md:text-lg max-w-2xl mx-auto">
-                Explorá nuestro catálogo, seleccioná las cantidades deseadas y enviá tu pedido consolidado para cotizar por WhatsApp.
+            <p class="text-slate-600 text-sm md:text-base max-w-2xl mx-auto">
+                Buscá por producto o código, filtrá por categoría y armá tu pedido para cotizar por WhatsApp.
             </p>
         </div>
 
-        <!-- Grid de Categorías Superior (Estilo Disgraf) -->
-        {% set categorias = web_content.lista_precios.categorias or [] %}
-        {% if categorias and categorias|length > 0 %}
-        <div class="mb-10" id="catalog-categories-container">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                    <i class="fas fa-layer-group text-primary"></i> Categorías Disponibles
-                </h3>
-                <button id="catalog-reset-cat-btn"
-                        type="button"
-                        class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition shadow-xs">
-                    <span>Ver todos los productos</span>
-                    <i class="fas fa-times text-[10px] text-slate-400"></i>
-                </button>
-            </div>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4" id="catalog-categories-grid">
-                {% for cat in categorias %}
-                {% set cat_name = cat.nombre or ('Categoría ' ~ loop.index) %}
-                {% set cat_items = web_content.lista_precios['items'] | selectattr('categoria', 'equalto', cat_name) | list if web_content.lista_precios['items'] else [] %}
-                {% set cat_count = cat_items|length %}
-                <div class="catalog-category-card group cursor-pointer bg-white border border-slate-200 hover:border-primary/50 hover:shadow-md rounded-2xl p-3 sm:p-4 text-center transition-all duration-200"
-                     data-category="{{ cat_name }}"
-                     role="button"
-                     tabindex="0"
-                     aria-label="Filtrar por {{ cat_name }}">
-                    <div class="w-full h-20 sm:h-24 rounded-xl overflow-hidden mb-2 bg-slate-50 flex items-center justify-center border border-slate-100 relative group-hover:scale-[1.02] transition-transform">
-                        {% if cat.foto_url %}
-                        <img src="{{ cat.foto_url }}" alt="{{ cat_name }}" class="w-full h-full object-cover">
-                        {% else %}
-                        <div class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center text-lg">
-                            <i class="fas fa-boxes"></i>
-                        </div>
-                        {% endif %}
-                        {% if cat.carta_url %}
-                        <span class="absolute top-1.5 right-1.5 bg-indigo-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
-                            🎨 Carta
-                        </span>
-                        {% endif %}
-                    </div>
-                    <h4 class="font-bold text-slate-800 text-xs sm:text-sm line-clamp-1 group-hover:text-primary transition-colors">
-                        {{ cat_name }}
-                    </h4>
-                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">
-                        {{ cat_count }} producto{{ 's' if cat_count != 1 else '' }}
-                    </p>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Buscador en Tiempo Real -->
-        <div class="relative max-w-xl mx-auto mb-8">
-            <div class="relative flex items-center">
-                <i class="fas fa-search absolute left-4 text-slate-400 text-sm"></i>
+        <!-- Barra de Búsqueda y Selector Compacto de Categorías (Adiós a las 88 cajas) -->
+        <div class="max-w-4xl mx-auto mb-8 flex flex-col md:flex-row items-center gap-3">
+            <div class="relative flex-1 w-full">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
                 <input type="text"
                        id="catalog-search-input"
                        placeholder="Buscar por producto (ej: Oracal, Lona) o código (ej: 1374)..."
@@ -224,22 +225,44 @@
                        autocomplete="off">
                 <button type="button"
                         id="catalog-search-clear"
-                        class="hidden absolute right-3.5 text-slate-400 hover:text-slate-600 p-1"
+                        class="hidden absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
                         aria-label="Limpiar búsqueda">
                     <i class="fas fa-times-circle"></i>
                 </button>
             </div>
-            <div id="catalog-active-filter-bar" class="hidden flex items-center gap-2 mt-2 px-1">
-                <span class="text-xs text-slate-500">Filtrando por categoría:</span>
-                <span id="catalog-active-filter-label" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary">
-                    <span></span>
-                    <i class="fas fa-times text-[10px] cursor-pointer hover:text-red-500" id="catalog-active-filter-remove" title="Quitar filtro"></i>
-                </span>
+
+            {% set total_items = web_content.lista_precios['items'] | length %}
+            {% set categorias = web_content.lista_precios.categorias or [] %}
+            <div class="w-full md:w-80 relative">
+                <select id="catalog-category-select"
+                        class="w-full pl-4 pr-10 py-3.5 bg-white border border-slate-200/90 rounded-2xl shadow-sm text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition appearance-none cursor-pointer">
+                    <option value="">Todas las categorías ({{ total_items }})</option>
+                    {% for cat in categorias %}
+                    {% set cat_name = cat.nombre or ('Categoría ' ~ loop.index) %}
+                    {% set cat_items = web_content.lista_precios['items'] | selectattr('categoria', 'equalto', cat_name) | list if web_content.lista_precios['items'] else [] %}
+                    {% set cat_count = cat_items|length %}
+                    <option value="{{ cat_name }}">{{ cat_name }} ({{ cat_count }})</option>
+                    {% endfor %}
+                </select>
+                <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                    <i class="fas fa-chevron-down"></i>
+                </div>
             </div>
         </div>
 
         <!-- Estado Sin Resultados -->
         <div id="catalog-no-results" class="hidden text-center py-12 px-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200 mb-8 max-w-md mx-auto">
+            <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-search text-xl"></i>
+            </div>
+            <p class="font-bold text-slate-800 text-base mb-1">No se encontraron productos</p>
+            <p class="text-slate-500 text-sm mb-4">No encontramos coincidencias para tu búsqueda o filtro.</p>
+            <button type="button"
+                    id="catalog-clear-all-filters-btn"
+                    class="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold shadow-sm transition">
+                Ver todos los productos
+            </button>
+        </div>
             <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
                 <i class="fas fa-search text-xl"></i>
             </div>
@@ -470,6 +493,28 @@
             {% endfor %}
         </div>
 
+        <!-- Controles de Paginación -->
+        <div id="catalog-pagination-container" class="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
+            <button type="button"
+                    id="catalog-prev-page"
+                    class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold shadow-xs hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-1.5"
+                    disabled>
+                <i class="fas fa-chevron-left text-[10px]"></i>
+                <span>← Anterior</span>
+            </button>
+
+            <div id="catalog-page-info" class="text-xs font-semibold text-slate-600 text-center">
+                Página 1 de 1 (mostrando 25 de 25 productos)
+            </div>
+
+            <button type="button"
+                    id="catalog-next-page"
+                    class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold shadow-xs hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-1.5">
+                <span>Siguiente →</span>
+                <i class="fas fa-chevron-right text-[10px]"></i>
+            </button>
+        </div>
+
         <!-- Lightbox Modal para Carta de Colores / Catálogo -->
         <div id="catalog-lightbox-modal"
              class="hidden fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 opacity-0 transition-opacity duration-200"
@@ -553,6 +598,7 @@
             </div>
         </div>
     </section>
+    {% endif %}
     {% else %}
     <section id="precios" class="py-24 container mx-auto px-6">
         <!-- Encabezado de la Sección -->
@@ -966,14 +1012,17 @@
 
         {% if web_content.lista_precios and web_content.lista_precios.get('items') %}
         {% if is_catalog_mode %}
+        {% if is_catalog_route %}
         // --- GESTIÓN DE CATÁLOGO COMERCIAL B2B ---
         (function() {
             const businessTitle = {{ (web_content.titulo_web or 'Negocio') | tojson }};
             const cleanPhone = {{ ((web_content.whatsapp_contacto if (web_content and web_content.whatsapp_contacto) else (client.phone if (client and client.phone) else '')) | string | replace('+', '') | replace(' ', '') | replace('-', '')) | tojson }};
 
             // Estado reactivo del catálogo
-            let selectedCategory = null;
+            let selectedCategory = '';
             let searchQuery = '';
+            let currentPage = 1;
+            const PAGE_SIZE = 25;
             const cart = {};
 
             // Helper de parseo numérico para importes argentinos
@@ -1004,10 +1053,13 @@
                 return hasCents ? (`$${intPart},${parts[1]}`) : (`$${intPart}`);
             }
 
-            // 1. Filtrado de Categorías y Búsqueda en Tiempo Real
+            // 1. Filtrado de Categorías, Búsqueda en Vivo y Paginación (25 items/pág)
             function applyFilters() {
                 const searchInput = document.getElementById('catalog-search-input');
                 searchQuery = (searchInput ? searchInput.value : '').trim().toLowerCase();
+
+                const categorySelect = document.getElementById('catalog-category-select');
+                selectedCategory = (categorySelect ? categorySelect.value : '').trim();
 
                 const clearSearchBtn = document.getElementById('catalog-search-clear');
                 if (clearSearchBtn) {
@@ -1015,44 +1067,12 @@
                     else clearSearchBtn.classList.add('hidden');
                 }
 
-                // Resaltado de tarjetas de categoría
-                document.querySelectorAll('.catalog-category-card').forEach(card => {
-                    const catName = card.getAttribute('data-category');
-                    if (selectedCategory && catName === selectedCategory) {
-                        card.classList.add('border-primary', 'ring-2', 'ring-primary/20', 'bg-primary/5');
-                        card.classList.remove('border-slate-200');
-                    } else {
-                        card.classList.remove('border-primary', 'ring-2', 'ring-primary/20', 'bg-primary/5');
-                        card.classList.add('border-slate-200');
-                    }
-                });
+                const allDesktopRows = Array.from(document.querySelectorAll('.catalog-table-row'));
+                const allMobileCards = Array.from(document.querySelectorAll('.catalog-product-card'));
 
-                // Indicador de categoría activa
-                const resetBtn = document.getElementById('catalog-reset-cat-btn');
-                const activeFilterBar = document.getElementById('catalog-active-filter-bar');
-                const activeFilterLabel = document.getElementById('catalog-active-filter-label');
-                if (selectedCategory) {
-                    if (resetBtn) {
-                        resetBtn.classList.remove('hidden');
-                        resetBtn.classList.add('inline-flex');
-                    }
-                    if (activeFilterBar) activeFilterBar.classList.remove('hidden');
-                    if (activeFilterLabel) {
-                        const span = activeFilterLabel.querySelector('span');
-                        if (span) span.textContent = selectedCategory;
-                    }
-                } else {
-                    if (resetBtn) {
-                        resetBtn.classList.add('hidden');
-                        resetBtn.classList.remove('inline-flex');
-                    }
-                    if (activeFilterBar) activeFilterBar.classList.add('hidden');
-                }
-
-                let visibleCount = 0;
-
-                // Filtrar filas de tabla desktop
-                document.querySelectorAll('.catalog-table-row').forEach(row => {
+                // Determinar qué ítems coinciden con búsqueda y categoría
+                const matchedIndices = [];
+                allDesktopRows.forEach((row, idx) => {
                     const cat = row.getAttribute('data-category') || '';
                     const name = (row.getAttribute('data-name') || '').toLowerCase();
                     const code = (row.getAttribute('data-code') || '').toLowerCase();
@@ -1061,23 +1081,34 @@
                     const matchesSearch = !searchQuery || name.includes(searchQuery) || code.includes(searchQuery);
 
                     if (matchesCategory && matchesSearch) {
+                        matchedIndices.push(idx);
+                    }
+                });
+
+                const totalMatched = matchedIndices.length;
+                const totalPages = Math.max(1, Math.ceil(totalMatched / PAGE_SIZE));
+
+                if (currentPage > totalPages) {
+                    currentPage = 1;
+                }
+                if (currentPage < 1) {
+                    currentPage = 1;
+                }
+
+                const startIndex = (currentPage - 1) * PAGE_SIZE;
+                const endIndex = Math.min(startIndex + PAGE_SIZE, totalMatched);
+                const visibleIndicesSet = new Set(matchedIndices.slice(startIndex, endIndex));
+
+                allDesktopRows.forEach((row, idx) => {
+                    if (visibleIndicesSet.has(idx)) {
                         row.style.display = '';
-                        visibleCount++;
                     } else {
                         row.style.display = 'none';
                     }
                 });
 
-                // Filtrar tarjetas mobile
-                document.querySelectorAll('.catalog-product-card').forEach(card => {
-                    const cat = card.getAttribute('data-category') || '';
-                    const name = (card.getAttribute('data-name') || '').toLowerCase();
-                    const code = (card.getAttribute('data-code') || '').toLowerCase();
-
-                    const matchesCategory = !selectedCategory || cat === selectedCategory;
-                    const matchesSearch = !searchQuery || name.includes(searchQuery) || code.includes(searchQuery);
-
-                    if (matchesCategory && matchesSearch) {
+                allMobileCards.forEach((card, idx) => {
+                    if (visibleIndicesSet.has(idx)) {
                         card.style.display = '';
                     } else {
                         card.style.display = 'none';
@@ -1088,43 +1119,71 @@
                 const noResultsEl = document.getElementById('catalog-no-results');
                 const tableWrapper = document.getElementById('catalog-desktop-table-wrapper');
                 const mobileContainer = document.getElementById('catalog-mobile-cards-container');
+                const paginationContainer = document.getElementById('catalog-pagination-container');
 
-                if (visibleCount === 0) {
+                if (totalMatched === 0) {
                     if (noResultsEl) noResultsEl.classList.remove('hidden');
                     if (tableWrapper) tableWrapper.classList.add('hidden');
                     if (mobileContainer) mobileContainer.classList.add('hidden');
+                    if (paginationContainer) paginationContainer.classList.add('hidden');
                 } else {
                     if (noResultsEl) noResultsEl.classList.add('hidden');
                     if (tableWrapper) tableWrapper.classList.remove('hidden');
                     if (mobileContainer) mobileContainer.classList.remove('hidden');
+                    if (paginationContainer) paginationContainer.classList.remove('hidden');
+                }
+
+                // Actualizar Controles de Paginación
+                const prevBtn = document.getElementById('catalog-prev-page');
+                const nextBtn = document.getElementById('catalog-next-page');
+                const pageInfo = document.getElementById('catalog-page-info');
+
+                if (prevBtn) {
+                    prevBtn.disabled = (currentPage <= 1);
+                }
+                if (nextBtn) {
+                    nextBtn.disabled = (currentPage >= totalPages);
+                }
+                if (pageInfo) {
+                    const showingCount = endIndex - startIndex;
+                    pageInfo.textContent = `Página ${currentPage} de ${totalPages} (mostrando ${showingCount} de ${totalMatched} productos)`;
                 }
             }
 
-            // Eventos de Categoría
-            document.querySelectorAll('.catalog-category-card').forEach(card => {
-                card.addEventListener('click', function() {
-                    const cat = this.getAttribute('data-category');
-                    if (selectedCategory === cat) {
-                        selectedCategory = null;
-                    } else {
-                        selectedCategory = cat;
-                    }
-                    applyFilters();
-                });
-            });
+            // Scroll suave a la cabecera de la tabla al cambiar de página
+            function scrollToCatalogTop() {
+                const target = document.getElementById('catalog-desktop-table-wrapper') || document.getElementById('catalog-category-select');
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
 
-            const resetCatBtn = document.getElementById('catalog-reset-cat-btn');
-            if (resetCatBtn) {
-                resetCatBtn.addEventListener('click', function() {
-                    selectedCategory = null;
-                    applyFilters();
+            // Eventos de Paginación
+            const prevPageBtn = document.getElementById('catalog-prev-page');
+            if (prevPageBtn) {
+                prevPageBtn.addEventListener('click', function() {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        applyFilters();
+                        scrollToCatalogTop();
+                    }
                 });
             }
 
-            const activeFilterRemove = document.getElementById('catalog-active-filter-remove');
-            if (activeFilterRemove) {
-                activeFilterRemove.addEventListener('click', function() {
-                    selectedCategory = null;
+            const nextPageBtn = document.getElementById('catalog-next-page');
+            if (nextPageBtn) {
+                nextPageBtn.addEventListener('click', function() {
+                    currentPage++;
+                    applyFilters();
+                    scrollToCatalogTop();
+                });
+            }
+
+            // Eventos del Selector de Categoría
+            const categorySelect = document.getElementById('catalog-category-select');
+            if (categorySelect) {
+                categorySelect.addEventListener('change', function() {
+                    currentPage = 1;
                     applyFilters();
                 });
             }
@@ -1132,13 +1191,17 @@
             // Eventos del Buscador
             const searchInput = document.getElementById('catalog-search-input');
             if (searchInput) {
-                searchInput.addEventListener('input', applyFilters);
+                searchInput.addEventListener('input', function() {
+                    currentPage = 1;
+                    applyFilters();
+                });
             }
 
             const searchClearBtn = document.getElementById('catalog-search-clear');
             if (searchClearBtn) {
                 searchClearBtn.addEventListener('click', function() {
                     if (searchInput) searchInput.value = '';
+                    currentPage = 1;
                     applyFilters();
                 });
             }
@@ -1146,8 +1209,9 @@
             const clearAllBtn = document.getElementById('catalog-clear-all-filters-btn');
             if (clearAllBtn) {
                 clearAllBtn.addEventListener('click', function() {
-                    selectedCategory = null;
+                    if (categorySelect) categorySelect.value = '';
                     if (searchInput) searchInput.value = '';
+                    currentPage = 1;
                     applyFilters();
                 });
             }
@@ -1394,7 +1458,11 @@
                     closeLightbox();
                 }
             });
+
+            // Inicializar paginación y filtros en la vista de catálogo
+            applyFilters();
         })();
+        {% endif %}
         {% else %}
         // --- GESTIÓN DE LISTA DE PRECIOS & SERVICIOS ---
         (function() {
