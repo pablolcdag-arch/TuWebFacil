@@ -519,12 +519,14 @@ Este documento registra las decisiones estratégicas y arquitectónicas del proy
 - **Razón:** En servidores de producción como Donweb, Gunicorn opera con múltiples procesos independientes (`-w 2`). Cuando la petición de inicio de campaña es atendida por un worker y la petición de detención por otro, la variable en memoria no era compartida, impidiendo el freno inmediato.
 - **Impacto:** Botón de detención 100% reactivo y efectivo en milisegundos en producción, y flujo de trabajo multiagente más ágil, limpio y consistente.
 
-## [23/10/2026] — Bloques Ejecutivos Ultraconcisos para Implementadores y Verificadores (Back & Front)
+## [24/10/2026] — Separación de Catálogo Masivo, Modo Mantenimiento en Landing y Pausa de Scheduler
 - **Decisión:**
-  1. En `.agents/AGENTS.md`, se estandarizó que los bloques copiables ````markdown # REPORTE PARA EL COORDINADOR ```` deben tener una longitud máxima estricta de 8 a 12 líneas ejecutivas.
-  2. Queda terminantemente prohibido volcar código fuente, archivos completos o transcripciones crudas de terminal dentro del bloque, ya que el Coordinador tiene acceso directo al repositorio para inspeccionar el diff y correr los comandos.
-  3. Los prompts redactados por el Coordinador deben indicar explícitamente si son para el rol **Backend** o **Frontend** tanto en la fase de implementación como en la de verificación.
-- **Razón:** Agilizar la interacción del usuario: copiar con 1 solo clic un bloque corto y claro, sin lidiar con paredes interminables de código duplicado en la conversación.
-- **Impacto:** Menor fricción operativa, interacción ultra-rápida entre agentes y ciclo de feedback inmediato.
+  1. **Separación de Catálogo y UX Limpia (`/catalogo`):** En `templates/client_template.html` y `app.py`, se refactorizó la experiencia de negocios con catálogo masivo (como ferreterías, gráficas y distribuidoras). En la Home (`/`) se reemplazó la grilla masiva de 88 cajas y la tabla infinita de 1.179 filas por una presentación elegante con un botón CTA destacado (`/catalogo`). En la vista `/catalogo` se implementó un selector compacto `<select id="catalog-category-select">` con conteos por categoría y paginación client-side ágil de 25 productos por página (`PAGE_SIZE = 25`), manteniendo la persistencia reactiva del carrito hacia WhatsApp.
+  2. **Entrega de Estáticos en Subdominios:** En `app.py`, se configuró la ruta `@app.route('/static/<path:filename>', subdomain="<client_slug>")`, resolviendo el error 404 originado por la directiva `SERVER_NAME` de Flask y garantizando la carga inmediata de fotos y logos en subdominios.
+  3. **Pausa Preventiva de Instagram Scheduler:** En el VPS, se detuvo quirúrgicamente el proceso `tuwebfacil_scheduler` (`supervisorctl stop tuwebfacil_scheduler`) para evitar posteos automáticos y captación de prospectos en frío mientras el bot de WhatsApp no esté operativo. En `scripts/ops/safe_deploy.py`, se ajustó la orden de reinicio para que el scheduler permanezca detenido ante futuros despliegues.
+  4. **Modo Mantenimiento en Landing Principal:** En `app.py`, se incorporó `templates/maintenance.html` gobernado por `MAINTENANCE_MODE` para la raíz del dominio principal (`tuweblista.com.ar`), evitando que nuevos visitantes completen formularios de demos inactivas mientras se gestiona el restablecimiento de la WABA en Meta. Las webs de clientes existentes (`*.tuweblista.com.ar`) y el panel de administración (`/admin`) continúan 100% operativos.
+- **Razón:** Proteger la reputación de la marca y la experiencia del usuario final mientras Meta procesa la apelación de la WABA en el ticket `29655174450750328`, evitando demos huérfanas y blindando el funcionamiento de las webs ya activas.
+- **Impacto:** Navegación ultra-rápida y profesional en catálogos de más de 1.000 productos, cero publicaciones desatendidas en redes y plataforma principal en pausa preventiva sin afectar a clientes vigentes ni a Disgraf Hub.
+
 
 
