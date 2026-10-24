@@ -151,8 +151,9 @@ def deploy():
         print("  ✅ Dependencias verificadas con éxito.")
 
     # 3. Reiniciar de forma QUIRÚRGICA solo TuWebLista (NUNCA RESTART ALL)
+    # Nota: tuwebfacil_scheduler permanece detenido mientras el bot de WhatsApp esté pausado.
     print("\n🔄 Reiniciando procesos de TuWebLista en Supervisor...")
-    cmd_restart = "supervisorctl restart tuwebfacil_app tuwebfacil_receiver tuwebfacil_scheduler"
+    cmd_restart = "supervisorctl restart tuwebfacil_app tuwebfacil_receiver"
     stdin, stdout, stderr = ssh.exec_command(cmd_restart)
     out = stdout.read().decode().strip()
     err = stderr.read().decode().strip()

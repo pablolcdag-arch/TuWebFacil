@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma en Mantenimiento • TuWebLista</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#2563eb',
+                        'secondary': '#1d4ed8',
+                    },
+                    fontFamily: {
+                        'sans': ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0b0f19;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(124, 58, 237, 0.10) 0px, transparent 50%);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center font-sans text-white p-4 md:p-6 antialiased">
+    <div class="max-w-xl w-full">
+        <div class="relative overflow-hidden rounded-3xl bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-8 md:p-12 shadow-2xl shadow-black/50 text-center">
+            
+            <!-- Ambient Glow -->
+            <div class="absolute -top-24 -right-24 w-60 h-60 bg-blue-500/15 blur-[90px] rounded-full pointer-events-none"></div>
+            <div class="absolute -bottom-24 -left-24 w-60 h-60 bg-indigo-500/10 blur-[90px] rounded-full pointer-events-none"></div>
+
+            <div class="relative z-10">
+                <!-- Icon Badge -->
+                <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-blue-500/20 to-indigo-500/20 border border-blue-500/30 mx-auto flex items-center justify-center mb-6 shadow-inner">
+                    <div class="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                        <i class="fas fa-tools text-2xl"></i>
+                    </div>
+                </div>
+
+                <!-- Badge -->
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-4">
+                    <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                    Mantenimiento Programado
+                </div>
+
+                <!-- Main Title & Subtitle -->
+                <h1 class="text-3xl md:text-4xl font-extrabold mb-4 tracking-tight text-white">
+                    Estamos mejorando TuWebLista
+                </h1>
+                
+                <p class="text-slate-400 text-base md:text-lg mb-8 leading-relaxed max-w-md mx-auto">
+                    Estamos realizando tareas de mantenimiento e infraestructura para implementar nuevas funciones y brindarte un mejor servicio.
+                </p>
+
+                <!-- Status Card -->
+                <div class="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-5 mb-8 text-left shadow-lg">
+                    <div class="flex items-start gap-3">
+                        <div class="text-emerald-400 text-lg mt-0.5">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-200 font-semibold mb-1">
+                                ¿Ya tenés una web con nosotros?
+                            </p>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Todas las páginas web de nuestros clientes continúan funcionando online con total normalidad y sin interrupciones.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notice -->
+                <p class="text-xs text-slate-500">
+                    Estaremos de regreso muy pronto. Gracias por tu paciencia.
+                </p>
+            </div>
+
+            <!-- Footer -->
+            <div class="mt-8 pt-6 border-t border-slate-800/80 text-center">
+                <p class="text-slate-500 text-xs font-medium tracking-wide">
+                    <span class="text-slate-400 font-semibold">TuWebLista</span> • Páginas web simples para tu negocio
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -668,6 +668,8 @@ def serve_receipts(filename):
 
 @app.route('/')
 def index():
+    if os.getenv('MAINTENANCE_MODE', 'true').lower() == 'true':
+        return render_template('maintenance.html')
     return send_from_directory('.', 'index.html')
 
 @app.route('/privacidad')
@@ -676,6 +678,11 @@ def privacidad():
 
 @app.route('/process_form', methods=['POST'])
 def process_form():
+    if os.getenv('MAINTENANCE_MODE', 'true').lower() == 'true':
+        return jsonify({
+            "success": False, 
+            "error": "La plataforma se encuentra en mantenimiento temporal. Por favor intentá nuevamente más tarde."
+        }), 503
     try:
         data = request.json
         if not data:
